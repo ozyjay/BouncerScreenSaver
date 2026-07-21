@@ -3,6 +3,7 @@ package au.edu.jcu.mobiletech.bouncerscreensaver
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -10,11 +11,24 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SettingsManagerTest {
     private lateinit var settingsManager: SettingsManager
+    private val appContext
+        get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Before
     fun setUp() {
-        val appContext = InstrumentationRegistry.getInstrumentation().targetContext
+        appContext.getSharedPreferences("bouncer_prefs", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
         settingsManager = SettingsManager(appContext)
+    }
+
+    @After
+    fun tearDown() {
+        appContext.getSharedPreferences("bouncer_prefs", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
     }
 
     @Test

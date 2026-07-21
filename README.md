@@ -40,7 +40,7 @@ Estimates represent additional battery drain per hour of **screen-on time**. Not
 ## 🛠 Technical Details
 
 - **Core:** Kotlin & Android WallpaperService.
-- **Graphics:** Android Canvas API with **Bitmap Caching** (glow effects are pre-rendered and tinted via GPU for zero allocation overhead).
+- **Graphics:** Android Canvas API with **Bitmap Caching** (glow effects are pre-rendered, with drawing objects reused to minimize allocation pressure).
 - **Physics:** Spatial Binning (Grid-based partitioning).
 - **Architecture:** 
     - Dedicated `RenderThread` for graphics/logic.

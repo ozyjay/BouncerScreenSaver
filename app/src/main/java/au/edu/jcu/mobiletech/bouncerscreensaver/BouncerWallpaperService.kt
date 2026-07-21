@@ -1,7 +1,9 @@
 package au.edu.jcu.mobiletech.bouncerscreensaver
 
 import android.graphics.*
+import android.os.SystemClock
 import android.service.wallpaper.WallpaperService
+import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import androidx.core.graphics.toColorInt
@@ -12,7 +14,7 @@ class BouncerWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine = BouncerEngine()
 
     inner class BouncerEngine : Engine() {
-        private var renderThread: RenderThread? = null
+        @Volatile private var renderThread: RenderThread? = null
 
         override fun onCreate(surfaceHolder: SurfaceHolder?) {
             super.onCreate(surfaceHolder)
@@ -40,7 +42,7 @@ class BouncerWallpaperService : WallpaperService() {
         }
 
         private fun startThread() {
-            if (renderThread == null) {
+            if (renderThread?.isAlive != true) {
                 renderThread = RenderThread(surfaceHolder).apply {
                     isRunning = true
                     start()
@@ -49,11 +51,17 @@ class BouncerWallpaperService : WallpaperService() {
         }
 
         private fun stopThread() {
-            renderThread?.let {
-                it.isRunning = false
-                it.join()
+            val thread = renderThread ?: return
+            thread.isRunning = false
+            thread.interrupt()
+            try {
+                thread.join(RENDER_THREAD_STOP_TIMEOUT_MS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
             }
-            renderThread = null
+            if (!thread.isAlive && renderThread === thread) {
+                renderThread = null
+            }
         }
 
         private inner class RenderThread(private val surfaceHolder: SurfaceHolder) : Thread() {
@@ -69,13 +77,14 @@ class BouncerWallpaperService : WallpaperService() {
             @Volatile private var destroyOnTouch = false
             
             private val lastTouch = java.util.concurrent.atomic.AtomicReference<PointF?>(null)
+            private var nextBallId = 1L
 
             // Optimization: Cache glow as a Bitmap to avoid per-frame RadialGradient allocations
             private val glowBitmap: Bitmap = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888)
             private val glowPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+            private val glowDestination = RectF()
 
-            // Spatial Grid for O(N) collisions
-            private val cellSize = 100f
+            // Lists are retained between frames to avoid rebuilding the grid's allocation graph.
             private val grid = mutableMapOf<Int, MutableList<Ball>>()
 
             private val settings = SettingsManager(this@BouncerWallpaperService)
@@ -112,29 +121,48 @@ class BouncerWallpaperService : WallpaperService() {
             }
 
             override fun run() {
-                var lastTime = System.currentTimeMillis()
-                while (isRunning) {
-                    val currentTime = System.currentTimeMillis()
-                    val deltaTime = (currentTime - lastTime) / 1000f
-                    lastTime = currentTime
+                var lastFrameNanos = SystemClock.elapsedRealtimeNanos()
+                try {
+                    while (isRunning && !isInterrupted) {
+                        val frameStartNanos = SystemClock.elapsedRealtimeNanos()
+                        val deltaTime = ((frameStartNanos - lastFrameNanos) / NANOS_PER_SECOND)
+                            .toFloat()
+                            .coerceIn(0f, MAX_DELTA_SECONDS)
+                        lastFrameNanos = frameStartNanos
 
-                    var canvas: Canvas? = null
-                    try {
-                        canvas = surfaceHolder.lockCanvas()
-                        if (canvas != null) {
-                            updateState(canvas.width, canvas.height, deltaTime)
-                            drawFrame(canvas)
+                        var canvas: Canvas? = null
+                        try {
+                            canvas = surfaceHolder.lockCanvas()
+                            if (canvas != null) {
+                                updateState(canvas.width, canvas.height, deltaTime)
+                                drawFrame(canvas)
+                            }
+                        } catch (error: Exception) {
+                            Log.e(TAG, "Unable to render wallpaper frame", error)
+                        } finally {
+                            if (canvas != null) {
+                                try {
+                                    surfaceHolder.unlockCanvasAndPost(canvas)
+                                } catch (error: Exception) {
+                                    Log.e(TAG, "Unable to post wallpaper frame", error)
+                                }
+                            }
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    } finally {
-                        if (canvas != null) surfaceHolder.unlockCanvasAndPost(canvas)
-                    }
 
-                    val elapsed = System.currentTimeMillis() - currentTime
-                    if (elapsed < 16) sleep(16 - elapsed)
+                        val elapsedMillis =
+                            (SystemClock.elapsedRealtimeNanos() - frameStartNanos) / NANOS_PER_MILLISECOND
+                        if (elapsedMillis < FRAME_INTERVAL_MILLIS) {
+                            sleep(FRAME_INTERVAL_MILLIS - elapsedMillis)
+                        }
+                    }
+                } catch (_: InterruptedException) {
+                    // Interruption is the normal, prompt shutdown path.
+                    interrupt()
+                } finally {
+                    settings.unregisterListener(prefListener)
+                    glowBitmap.recycle()
+                    if (renderThread === this) renderThread = null
                 }
-                settings.unregisterListener(prefListener)
             }
 
             fun handleTouch(x: Float, y: Float) {
@@ -146,38 +174,32 @@ class BouncerWallpaperService : WallpaperService() {
             private fun drawFrame(canvas: Canvas) {
                 canvas.drawColor(Color.BLACK)
                 for (ball in balls) {
-                    glowPaint.colorFilter = PorterDuffColorFilter(ball.color, PorterDuff.Mode.SRC_IN)
+                    glowPaint.colorFilter = ball.colorFilter ?: PorterDuffColorFilter(
+                        ball.color,
+                        PorterDuff.Mode.SRC_IN,
+                    ).also { ball.colorFilter = it }
                     glowPaint.alpha = (ball.alpha * 255).toInt()
-                    
-                    val dest = RectF(
+
+                    glowDestination.set(
                         ball.x - ball.radius * 1.5f,
                         ball.y - ball.radius * 1.5f,
                         ball.x + ball.radius * 1.5f,
-                        ball.y + ball.radius * 1.5f
+                        ball.y + ball.radius * 1.5f,
                     )
-                    canvas.drawBitmap(glowBitmap, null, dest, glowPaint)
+                    canvas.drawBitmap(glowBitmap, null, glowDestination, glowPaint)
                 }
             }
 
             private fun updateState(width: Int, height: Int, deltaTime: Float) {
-                val currentTime = System.currentTimeMillis()
+                if (width <= 0 || height <= 0) return
+
+                val currentTime = SystemClock.elapsedRealtime()
 
                 // Process touches
                 val touch = lastTouch.getAndSet(null)
 
-                // More aggressive spawning when far from target
-                val deficit = targetBallCount - balls.size
-                val spawnProbability = when {
-                    deficit > 100 -> 0.8f
-                    deficit > 0 -> 0.2f
-                    else -> 0f
-                }
-                
-                if (deficit > 0 && Random.nextFloat() < spawnProbability) {
-                    balls.add(createRandomBall(width, height))
-                }
-
-                while (balls.size > targetBallCount) balls.removeAt(0)
+                val desiredBallCount = targetBallCount.coerceIn(1, 1_000)
+                while (balls.size > desiredBallCount) balls.removeAt(balls.lastIndex)
 
                 val iterator = balls.iterator()
                 while (iterator.hasNext()) {
@@ -195,9 +217,14 @@ class BouncerWallpaperService : WallpaperService() {
                         val totalLife = (ball.expiryTime - ball.startTime).toFloat()
                         val lifeRatio = (remainingLife / totalLife).coerceIn(0f, 1f)
                         
-                        // Incorporate per-ball size variability into the global size behavior
-                        val effectiveSizeBehavior = sizeBehavior * ball.sizeVariability
-                        ball.radius = (ball.initialRadius * (1.0f + effectiveSizeBehavior * (1.0f - lifeRatio))).coerceIn(5f, 500f)
+                        ball.radius = BouncerPhysics.radiusForSurface(
+                            initialRadius = ball.initialRadius,
+                            sizeBehavior = sizeBehavior,
+                            sizeVariability = ball.sizeVariability,
+                            lifeRatio = lifeRatio,
+                            width = width,
+                            height = height,
+                        )
                         
                         ball.mass = ball.radius * ball.radius // PI is constant, skip it for perf
                         
@@ -206,40 +233,51 @@ class BouncerWallpaperService : WallpaperService() {
 
                         if (ball.x + ball.radius > width || ball.x - ball.radius < 0) {
                             ball.dx = -ball.dx
-                            ball.x = ball.x.coerceIn(ball.radius, width - ball.radius)
+                            ball.x = ball.x.coerceIn(ball.radius, width.toFloat() - ball.radius)
                         }
                         if (ball.y + ball.radius > height || ball.y - ball.radius < 0) {
                             ball.dy = -ball.dy
-                            ball.y = ball.y.coerceIn(ball.radius, height - ball.radius)
+                            ball.y = ball.y.coerceIn(ball.radius, height.toFloat() - ball.radius)
                         }
                     }
+                }
+
+                repeat(BouncerPhysics.ballsToSpawn(balls.size, desiredBallCount)) {
+                    balls.add(createRandomBall(width, height))
                 }
 
                 if (physicsEnabled) resolveCollisions(width, height)
             }
 
             private fun resolveCollisions(width: Int, height: Int) {
-                grid.clear()
+                grid.values.forEach(MutableList<Ball>::clear)
+                val cellSize = BouncerPhysics.collisionCellSize(
+                    balls.maxOfOrNull(Ball::radius) ?: 0f,
+                )
                 val cols = (width / cellSize).toInt() + 1
+                val rows = (height / cellSize).toInt() + 1
                 
                 // Assign balls to grid cells
                 for (ball in balls) {
-                    val gx = (ball.x / cellSize).toInt()
-                    val gy = (ball.y / cellSize).toInt()
+                    val gx = (ball.x / cellSize).toInt().coerceIn(0, cols - 1)
+                    val gy = (ball.y / cellSize).toInt().coerceIn(0, rows - 1)
                     val key = gx + gy * cols
                     grid.getOrPut(key) { mutableListOf() }.add(ball)
                 }
 
                 // Check collisions only in neighboring cells
                 for (ball in balls) {
-                    val gx = (ball.x / cellSize).toInt()
-                    val gy = (ball.y / cellSize).toInt()
+                    val gx = (ball.x / cellSize).toInt().coerceIn(0, cols - 1)
+                    val gy = (ball.y / cellSize).toInt().coerceIn(0, rows - 1)
                     
                     for (ix in -1..1) {
                         for (iy in -1..1) {
-                            val key = (gx + ix) + (gy + iy) * cols
+                            val neighborX = gx + ix
+                            val neighborY = gy + iy
+                            if (neighborX !in 0 until cols || neighborY !in 0 until rows) continue
+                            val key = neighborX + neighborY * cols
                             grid[key]?.forEach { other ->
-                                if (ball !== other) checkCollision(ball, other)
+                                if (ball.id < other.id) checkCollision(ball, other)
                             }
                         }
                     }
@@ -253,10 +291,9 @@ class BouncerWallpaperService : WallpaperService() {
                 val minDist = b1.radius + b2.radius
                 if (distSq < minDist * minDist) {
                     val dist = sqrt(distSq)
-                    if (dist == 0f) return
                     val overlap = (minDist - dist)
-                    val nx = dx / dist
-                    val ny = dy / dist
+                    val nx = if (dist > 0f) dx / dist else 1f
+                    val ny = if (dist > 0f) dy / dist else 0f
                     val totalMass = b1.mass + b2.mass
                     
                     b1.x -= nx * overlap * (b2.mass / totalMass)
@@ -266,6 +303,15 @@ class BouncerWallpaperService : WallpaperService() {
 
                     val v1n = b1.dx * nx + b1.dy * ny
                     val v2n = b2.dx * nx + b2.dy * ny
+                    if (!BouncerPhysics.areApproaching(
+                            b1.dx,
+                            b1.dy,
+                            b2.dx,
+                            b2.dy,
+                            nx,
+                            ny,
+                        )
+                    ) return
                     val v1nAfter = (v1n * (b1.mass - b2.mass) + 2 * b2.mass * v2n) / totalMass
                     val v2nAfter = (v2n * (b2.mass - b1.mass) + 2 * b1.mass * v1n) / totalMass
                     b1.dx += (v1nAfter - v1n) * nx
@@ -277,14 +323,15 @@ class BouncerWallpaperService : WallpaperService() {
 
             private fun createRandomBall(width: Int, height: Int): Ball {
                 // Slightly smaller balls for high-density support
-                val initialRadius = Random.nextFloat() * 40f + 10f
+                val initialRadius = (Random.nextFloat() * 40f + 10f)
+                    .coerceAtMost(min(width, height) / 2f)
                 // Apply a random variance to the lifespan (50% to 150% of base)
                 val variance = Random.nextFloat() * 1.0f + 0.5f
                 val lifespan = (variance * lifespanBase * 1000).toLong()
                 val speed = Random.nextFloat() * baseSpeed + (baseSpeed / 2f)
                 val angle = Random.nextFloat() * 2f * PI.toFloat()
                 val sizeVariability = Random.nextFloat() * 0.8f + 0.6f // 60% to 140% variability
-                val now = System.currentTimeMillis()
+                val now = SystemClock.elapsedRealtime()
                 
                 val color = when (currentPalette) {
                     "Neon" -> intArrayOf("#FF00FF".toColorInt(), "#00FFFF".toColorInt(), "#00FF00".toColorInt(), "#FFFF00".toColorInt(), "#FF0000".toColorInt()).random()
@@ -296,8 +343,8 @@ class BouncerWallpaperService : WallpaperService() {
                 }
 
                 return Ball(
-                    x = Random.nextFloat() * (width - 2 * initialRadius) + initialRadius,
-                    y = Random.nextFloat() * (height - 2 * initialRadius) + initialRadius,
+                    x = Random.nextFloat() * (width - 2f * initialRadius) + initialRadius,
+                    y = Random.nextFloat() * (height - 2f * initialRadius) + initialRadius,
                     dx = cos(angle.toDouble()).toFloat() * speed,
                     dy = sin(angle.toDouble()).toFloat() * speed,
                     radius = initialRadius,
@@ -306,7 +353,8 @@ class BouncerWallpaperService : WallpaperService() {
                     startTime = now,
                     expiryTime = now + lifespan,
                     sizeVariability = sizeVariability,
-                    alpha = 0f
+                    alpha = 0f,
+                    id = nextBallId++,
                 ).apply { mass = radius * radius }
             }
         }
@@ -316,8 +364,19 @@ class BouncerWallpaperService : WallpaperService() {
         var x: Float, var y: Float, var dx: Float, var dy: Float,
         var radius: Float, val initialRadius: Float, val color: Int,
         val startTime: Long, val expiryTime: Long, 
-        val sizeVariability: Float, var alpha: Float = 1f
+        val sizeVariability: Float, var alpha: Float = 1f,
+        val id: Long = 0L,
     ) {
         var mass: Float = 1.0f
+        var colorFilter: ColorFilter? = null
+    }
+
+    private companion object {
+        const val TAG = "BouncerWallpaper"
+        const val FRAME_INTERVAL_MILLIS = 16L
+        const val RENDER_THREAD_STOP_TIMEOUT_MS = 500L
+        const val NANOS_PER_MILLISECOND = 1_000_000L
+        const val NANOS_PER_SECOND = 1_000_000_000.0
+        const val MAX_DELTA_SECONDS = 0.05f
     }
 }
