@@ -6,15 +6,13 @@ plugins {
 android {
     namespace = "net.crunchycodes.bouncer.live.wallpaper"
     compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
+        version = release(37)
     }
 
     defaultConfig {
         applicationId = "net.crunchycodes.bouncer.live.wallpaper"
         minSdk = 24
-        targetSdk = 36_1
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
