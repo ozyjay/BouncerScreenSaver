@@ -1,4 +1,4 @@
-package au.edu.jcu.mobiletech.bouncerscreensaver
+package net.crunchycodes.bouncer.live.wallpaper
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,7 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import au.edu.jcu.mobiletech.bouncerscreensaver.ui.theme.BouncerScreenSaverTheme
+import net.crunchycodes.bouncer.live.wallpaper.ui.theme.BouncerScreenSaverTheme
 import java.util.Locale
 
 class SettingsActivity : ComponentActivity() {

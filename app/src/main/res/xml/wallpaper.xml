@@ -2,4 +2,4 @@
 <wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
     android:label="Bouncer Wallpaper"
     android:thumbnail="@mipmap/ic_launcher"
-    android:settingsActivity="au.edu.jcu.mobiletech.bouncerscreensaver.SettingsActivity" />
+    android:settingsActivity="net.crunchycodes.bouncer.live.wallpaper.SettingsActivity" />

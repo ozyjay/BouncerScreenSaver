@@ -1,4 +1,4 @@
-package au.edu.jcu.mobiletech.bouncerscreensaver
+package net.crunchycodes.bouncer.live.wallpaper
 
 import org.junit.Test
 import org.junit.Assert.*

@@ -1,4 +1,4 @@
-package au.edu.jcu.mobiletech.bouncerscreensaver
+package net.crunchycodes.bouncer.live.wallpaper
 
 import android.app.WallpaperManager
 import android.content.ComponentName
@@ -26,7 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import au.edu.jcu.mobiletech.bouncerscreensaver.ui.theme.BouncerScreenSaverTheme
+import net.crunchycodes.bouncer.live.wallpaper.ui.theme.BouncerScreenSaverTheme
 import kotlin.math.*
 import kotlin.random.Random
 

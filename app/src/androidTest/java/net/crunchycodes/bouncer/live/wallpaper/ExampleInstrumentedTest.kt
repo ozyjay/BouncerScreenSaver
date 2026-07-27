@@ -1,4 +1,4 @@
-package au.edu.jcu.mobiletech.bouncerscreensaver
+package net.crunchycodes.bouncer.live.wallpaper
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +19,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("au.edu.jcu.mobiletech.bouncerscreensaver", appContext.packageName)
+        assertEquals("net.crunchycodes.bouncer.live.wallpaper", appContext.packageName)
     }
 }

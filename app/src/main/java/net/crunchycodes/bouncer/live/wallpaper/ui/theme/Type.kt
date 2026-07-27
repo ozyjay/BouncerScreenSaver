@@ -1,4 +1,4 @@
-package au.edu.jcu.mobiletech.bouncerscreensaver.ui.theme
+package net.crunchycodes.bouncer.live.wallpaper.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
