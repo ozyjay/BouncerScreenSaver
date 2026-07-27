@@ -39,3 +39,4 @@ Thumbs.db
 
 # Log files
 *.log
+/app/release/app-release.aab
