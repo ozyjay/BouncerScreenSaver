@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -223,6 +224,7 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         }
         var canvasSize by remember { mutableStateOf(Size.Zero) }
+        var frameTick by remember { mutableIntStateOf(0) }
 
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
@@ -243,6 +245,8 @@ class MainActivity : ComponentActivity() {
                 .fillMaxSize()
                 .onSizeChanged { canvasSize = Size(it.width.toFloat(), it.height.toFloat()) },
         ) {
+            // Reading the tick makes this canvas re-draw after each simulation update.
+            frameTick
             val width = size.width
             val height = size.height
 
@@ -289,6 +293,7 @@ class MainActivity : ComponentActivity() {
                         height = canvasSize.height,
                         deltaSeconds = deltaSeconds,
                     )
+                    frameTick++
                 }
             }
         }

@@ -24,6 +24,16 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 class BouncerWallpaperService : WallpaperService() {
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "Wallpaper service created")
+    }
+
+    override fun onDestroy() {
+        Log.d(TAG, "Wallpaper service destroyed")
+        super.onDestroy()
+    }
+
     override fun onCreateEngine(): Engine = BouncerEngine()
 
     inner class BouncerEngine : Engine() {
@@ -31,12 +41,42 @@ class BouncerWallpaperService : WallpaperService() {
         // thread is starting or stopping, so thread ownership changes stay behind one lock.
         private val lifecycleLock = Any()
         private val lifecycleController = RenderLifecycleController()
+        private val simulationState = SimulationState()
+        private val settings = SettingsManager(this@BouncerWallpaperService)
+
+        @Volatile
+        private var targetBallCount = BouncerPhysics.DEFAULT_BALL_COUNT
+
+        @Volatile
+        private var baseSpeed = BouncerPhysics.DEFAULT_BALL_SPEED
+
+        @Volatile
+        private var currentPalette = ColorPalette.RANDOM
+
+        @Volatile
+        private var physicsEnabled = true
+
+        @Volatile
+        private var sizeBehavior = BouncerPhysics.DEFAULT_SIZE_BEHAVIOR
+
+        @Volatile
+        private var lifespanBase = BouncerPhysics.DEFAULT_LIFESPAN_SECONDS
+
+        @Volatile
+        private var destroyOnTouch = false
+
+        private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            applySettings(key)
+        }
 
         @Volatile
         private var renderThread: RenderThread? = null
 
         override fun onCreate(surfaceHolder: SurfaceHolder?) {
             super.onCreate(surfaceHolder)
+            applySettings(null)
+            // Settings live for the full engine lifetime so renderer restarts do not churn listeners.
+            settings.registerListener(prefListener)
             setTouchEventsEnabled(true)
         }
 
@@ -50,7 +90,7 @@ class BouncerWallpaperService : WallpaperService() {
 
         override fun onTouchEvent(event: MotionEvent) {
             if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE) {
-                renderThread?.handleTouch(event.x, event.y)
+                handleTouch(event.x, event.y)
             }
         }
 
@@ -61,6 +101,11 @@ class BouncerWallpaperService : WallpaperService() {
                 reason = "surfaceCreated",
                 actionProvider = { lifecycleController.onSurfaceChanged(true) },
             )
+        }
+
+        override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+            super.onSurfaceChanged(holder, format, width, height)
+            Log.d(TAG, "Surface changed: width=$width height=$height format=$format")
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
@@ -78,6 +123,12 @@ class BouncerWallpaperService : WallpaperService() {
                 reason = "engineDestroyed",
                 actionProvider = { lifecycleController.onDestroyed() },
             )
+            settings.unregisterListener(prefListener)
+            synchronized(lifecycleLock) {
+                if (renderThread == null) {
+                    simulationState.clear()
+                }
+            }
             super.onDestroy()
         }
 
@@ -167,9 +218,42 @@ class BouncerWallpaperService : WallpaperService() {
             }
 
             Log.d(TAG, "Render thread exited id=$threadId reason=$reason")
+            if (lifecycleController.currentState().destroyed) {
+                simulationState.clear()
+            }
             val restartThreadId = exitResult.restartThreadId ?: return
             Log.d(TAG, "Restarting render thread automatically with id=$restartThreadId")
             startRenderThreadLocked(restartThreadId, "autoRestart:$reason")
+        }
+
+        private fun handleTouch(x: Float, y: Float) {
+            if (destroyOnTouch) {
+                simulationState.lastTouch.set(PointF(x, y))
+            }
+        }
+
+        private fun applySettings(changedKey: String?) {
+            if (changedKey == null || changedKey == SettingsManager.KEY_BALL_COUNT) {
+                targetBallCount = settings.ballCount
+            }
+            if (changedKey == null || changedKey == SettingsManager.KEY_BALL_SPEED) {
+                baseSpeed = settings.ballSpeed
+            }
+            if (changedKey == null || changedKey == SettingsManager.KEY_PALETTE) {
+                currentPalette = settings.palette
+            }
+            if (changedKey == null || changedKey == SettingsManager.KEY_PHYSICS) {
+                physicsEnabled = settings.physicsEnabled
+            }
+            if (changedKey == null || changedKey == SettingsManager.KEY_SIZE_BEHAVIOR) {
+                sizeBehavior = settings.sizeBehavior
+            }
+            if (changedKey == null || changedKey == SettingsManager.KEY_LIFESPAN) {
+                lifespanBase = settings.lifespanBase
+            }
+            if (changedKey == null || changedKey == SettingsManager.KEY_DESTROY_ON_TOUCH) {
+                destroyOnTouch = settings.destroyOnTouch
+            }
         }
 
         private inner class RenderThread(
@@ -177,47 +261,17 @@ class BouncerWallpaperService : WallpaperService() {
             private val surfaceHolder: SurfaceHolder,
         ) : Thread("BouncerRender-$threadId") {
             private val stopRequested = AtomicBoolean(false)
-            private val balls = mutableListOf<BallState>()
             private val randomSource = object : RandomSource {
                 override fun nextFloat(): Float = Random.nextFloat()
                 override fun nextInt(until: Int): Int = Random.nextInt(until)
             }
 
-            @Volatile
-            private var targetBallCount = BouncerPhysics.DEFAULT_BALL_COUNT
-
-            @Volatile
-            private var baseSpeed = BouncerPhysics.DEFAULT_BALL_SPEED
-
-            @Volatile
-            private var currentPalette = ColorPalette.RANDOM
-
-            @Volatile
-            private var physicsEnabled = true
-
-            @Volatile
-            private var sizeBehavior = BouncerPhysics.DEFAULT_SIZE_BEHAVIOR
-
-            @Volatile
-            private var lifespanBase = BouncerPhysics.DEFAULT_LIFESPAN_SECONDS
-
-            @Volatile
-            private var destroyOnTouch = false
-
-            private val lastTouch = AtomicReference<PointF?>(null)
-            private var nextBallId = 1L
-
             private val glowBitmap: Bitmap = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888)
             private val glowPaint = Paint(Paint.FILTER_BITMAP_FLAG)
             private val glowDestination = RectF()
             private val grid = mutableMapOf<Int, MutableList<BallState>>()
-            private val settings = SettingsManager(this@BouncerWallpaperService)
-            private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-                applySettings(key)
-            }
 
             init {
-                applySettings(null)
                 // Build the glow sprite once per render thread and reuse it for every ball.
                 val canvas = Canvas(glowBitmap)
                 val paint = Paint().apply {
@@ -235,7 +289,6 @@ class BouncerWallpaperService : WallpaperService() {
             }
 
             override fun run() {
-                settings.registerListener(prefListener)
                 var lastFrameNanos = SystemClock.elapsedRealtimeNanos()
                 try {
                     while (!stopRequested.get() && !isInterrupted) {
@@ -279,7 +332,6 @@ class BouncerWallpaperService : WallpaperService() {
                 } catch (_: InterruptedException) {
                     interrupt()
                 } finally {
-                    settings.unregisterListener(prefListener)
                     if (!glowBitmap.isRecycled) {
                         glowBitmap.recycle()
                     }
@@ -296,39 +348,9 @@ class BouncerWallpaperService : WallpaperService() {
                 }
             }
 
-            fun handleTouch(x: Float, y: Float) {
-                if (destroyOnTouch) {
-                    lastTouch.set(PointF(x, y))
-                }
-            }
-
-            private fun applySettings(changedKey: String?) {
-                if (changedKey == null || changedKey == SettingsManager.KEY_BALL_COUNT) {
-                    targetBallCount = settings.ballCount
-                }
-                if (changedKey == null || changedKey == SettingsManager.KEY_BALL_SPEED) {
-                    baseSpeed = settings.ballSpeed
-                }
-                if (changedKey == null || changedKey == SettingsManager.KEY_PALETTE) {
-                    currentPalette = settings.palette
-                }
-                if (changedKey == null || changedKey == SettingsManager.KEY_PHYSICS) {
-                    physicsEnabled = settings.physicsEnabled
-                }
-                if (changedKey == null || changedKey == SettingsManager.KEY_SIZE_BEHAVIOR) {
-                    sizeBehavior = settings.sizeBehavior
-                }
-                if (changedKey == null || changedKey == SettingsManager.KEY_LIFESPAN) {
-                    lifespanBase = settings.lifespanBase
-                }
-                if (changedKey == null || changedKey == SettingsManager.KEY_DESTROY_ON_TOUCH) {
-                    destroyOnTouch = settings.destroyOnTouch
-                }
-            }
-
             private fun drawFrame(canvas: Canvas) {
                 canvas.drawColor(Color.BLACK)
-                for (ball in balls) {
+                for (ball in simulationState.balls) {
                     glowPaint.colorFilter = ball.colorFilter ?: PorterDuffColorFilter(
                         ball.color,
                         PorterDuff.Mode.SRC_IN,
@@ -349,8 +371,9 @@ class BouncerWallpaperService : WallpaperService() {
                 if (width <= 0 || height <= 0) return
 
                 val currentTime = SystemClock.elapsedRealtime()
-                val touch = lastTouch.getAndSet(null)
+                val touch = simulationState.lastTouch.getAndSet(null)
                 val desiredBallCount = targetBallCount
+                val balls = simulationState.balls
 
                 while (balls.size > desiredBallCount) {
                     balls.removeAt(balls.lastIndex)
@@ -414,6 +437,7 @@ class BouncerWallpaperService : WallpaperService() {
                 grid.values.forEach(MutableList<BallState>::clear)
                 // Partition the surface into bins so each ball only checks nearby neighbors
                 // instead of naively iterating the full population.
+                val balls = simulationState.balls
                 val cellSize = BouncerPhysics.collisionCellSize(balls.maxOfOrNull(BallState::radius) ?: 0f)
                 val cols = (width / cellSize).toInt() + 1
                 val rows = (height / cellSize).toInt() + 1
@@ -473,11 +497,23 @@ class BouncerWallpaperService : WallpaperService() {
                     expiryTime = now + lifespan,
                     sizeVariability = sizeVariability,
                     alpha = 0f,
-                    id = nextBallId++,
+                    id = simulationState.nextBallId++,
                 ).apply {
                     mass = radius * radius
                     BouncerPhysics.ensureFiniteBall(this, width, height, allowStopped = false)
                 }
+            }
+        }
+
+        private inner class SimulationState {
+            val balls = mutableListOf<BallState>()
+            val lastTouch = AtomicReference<PointF?>(null)
+            var nextBallId = 1L
+
+            fun clear() {
+                balls.clear()
+                lastTouch.set(null)
+                nextBallId = 1L
             }
         }
     }
