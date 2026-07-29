@@ -1,9 +1,12 @@
 package net.crunchycodes.bouncer.live.wallpaper
 
-import androidx.test.platform.app.InstrumentationRegistry
+import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.junit.Assert.*
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -11,12 +14,12 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SettingsManagerTest {
     private lateinit var settingsManager: SettingsManager
-    private val appContext
+    private val appContext: Context
         get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Before
     fun setUp() {
-        appContext.getSharedPreferences("bouncer_prefs", android.content.Context.MODE_PRIVATE)
+        appContext.getSharedPreferences("bouncer_prefs", Context.MODE_PRIVATE)
             .edit()
             .clear()
             .commit()
@@ -25,38 +28,58 @@ class SettingsManagerTest {
 
     @After
     fun tearDown() {
-        appContext.getSharedPreferences("bouncer_prefs", android.content.Context.MODE_PRIVATE)
+        appContext.getSharedPreferences("bouncer_prefs", Context.MODE_PRIVATE)
             .edit()
             .clear()
             .commit()
     }
 
     @Test
-    fun testBallCountPersistence() {
-        val expectedValue = 123
-        settingsManager.ballCount = expectedValue
-        assertEquals(expectedValue, settingsManager.ballCount)
+    fun persistsAndClampsBallCount() {
+        settingsManager.ballCount = 5_000
+        assertEquals(BouncerPhysics.MAX_BALL_COUNT, settingsManager.ballCount)
     }
 
     @Test
-    fun testBallSpeedPersistence() {
-        val expectedValue = 12.5f
-        settingsManager.ballSpeed = expectedValue
-        assertEquals(expectedValue, settingsManager.ballSpeed, 0.01f)
+    fun persistsAndClampsBallSpeed() {
+        settingsManager.ballSpeed = -5f
+        assertEquals(BouncerPhysics.MIN_BALL_SPEED, settingsManager.ballSpeed, 0f)
     }
 
     @Test
-    fun testPalettePersistence() {
-        val expectedValue = "Ocean"
-        settingsManager.palette = expectedValue
-        assertEquals(expectedValue, settingsManager.palette)
+    fun persistsAndClampsSizeBehavior() {
+        settingsManager.sizeBehavior = 10f
+        assertEquals(BouncerPhysics.MAX_SIZE_BEHAVIOR, settingsManager.sizeBehavior, 0f)
     }
 
     @Test
-    fun testPhysicsEnabledPersistence() {
+    fun persistsAndClampsLifespan() {
+        settingsManager.lifespanBase = 500f
+        assertEquals(BouncerPhysics.MAX_LIFESPAN_SECONDS, settingsManager.lifespanBase, 0f)
+    }
+
+    @Test
+    fun palettePersistsAsStableIdentifier() {
+        settingsManager.palette = ColorPalette.OCEAN
+        assertEquals(ColorPalette.OCEAN, settingsManager.palette)
+    }
+
+    @Test
+    fun legacyPaletteValuesRemainReadable() {
+        appContext.getSharedPreferences("bouncer_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putString(SettingsManager.KEY_PALETTE, "Ocean")
+            .commit()
+
+        assertEquals(ColorPalette.OCEAN, settingsManager.palette)
+    }
+
+    @Test
+    fun booleansPersist() {
         settingsManager.physicsEnabled = false
+        settingsManager.destroyOnTouch = true
+
         assertFalse(settingsManager.physicsEnabled)
-        settingsManager.physicsEnabled = true
-        assertTrue(settingsManager.physicsEnabled)
+        assertTrue(settingsManager.destroyOnTouch)
     }
 }

@@ -1,48 +1,74 @@
-# Bouncer Live Wallpaper
+# Bouncer
 
-A high-performance, highly customizable Android Live Wallpaper featuring bouncing, glowing balls with realistic physics.
+Bouncer is an Android live wallpaper with glowing balls, configurable colors, touch interaction, and optional collision physics.
 
-## 🌟 Features
+## Features
 
-- **High-Performance Engine:** Uses a dedicated background render thread with a 60 FPS cap to ensure silky-smooth animations without impacting system UI responsiveness.
-- **Advanced Physics:** 
-    - Toggleable solid-body collisions.
-    - **Spatial Grid Optimization ($O(N)$):** Efficient collision detection that allows for high ball counts without melting your battery.
-- **Visual Customization:**
-    - **Color Palettes:** Choose from Neon, Ocean, Fire, Pastel, Forest, or full Random modes.
-    - **Size Dynamics:** Set balls to shrink or grow over time. Each ball has a unique variability factor, meaning some grow/shrink faster than others for a more chaotic, natural look.
-    - **Natural Flow:** Each ball is assigned a randomized lifetime (50% to 150% of the average) and velocity, ensuring a dynamic, asynchronous visual flow.
-    - **High Density:** Supports anywhere from 1 to 1,000 balls simultaneously.
-- **Modern Settings UI:** A Jetpack Compose-based settings screen with real-time preview and intuitive navigation.
-- **Interactive Gamification:** Toggleable "Destroy on Touch" mode that allows users to pop balls in proximity to their touch points.
-- **Battery Optimized:** Automatically kills the render process when the wallpaper is not visible.
+- Dedicated wallpaper render thread with explicit visibility, surface, and destruction state handling.
+- Glowing ball rendering using a cached bitmap per render thread.
+- Optional solid-body collisions with grid-based broad-phase checks.
+- Configurable ball count, base speed, palette, size behavior, lifespan, and touch destruction.
+- Compose-based dashboard and settings screens.
 
-## 🚀 How to Use
+## Performance Notes
 
-1. **Launch:** Open the app from your launcher to access the "Set Wallpaper" dashboard.
-2. **Setup:** Click "Set Wallpaper" to open the system Live Wallpaper picker.
-3. **Customize:** Tap the **Settings (Gear Icon)** to adjust physics, colors, and behavior.
-4. **Apply:** Confirm for your Home and/or Lock screen.
+Performance depends on device hardware, display resolution, refresh rate, selected ball count, collision physics, and size behavior.
 
-## 🔋 Battery Impact Estimates
+- Low and medium ball counts are generally the safest options for broad testing.
+- High counts, especially 250 to 1,000 balls, are intentionally available but demanding.
+- Collision physics increases CPU work as population density rises.
+- The launcher dashboard uses a lightweight background simulation and pauses when the activity is not visible.
 
-Estimates represent additional battery drain per hour of **screen-on time**. Note that background usage is **0%**.
+## Lifecycle Design
 
-| Configuration | Settings | CPU Usage | Est. Hourly Drain |
-| :--- | :--- | :--- | :--- |
-| **Eco** | 20-50 Balls, Physics ON, Static Size | < 3% | ~2% - 3% |
-| **Busy** | 200 Balls, Physics ON, Dynamic Size | 8% - 12% | ~5% - 7% |
-| **Chaos** | 1000 Balls, Physics OFF | 15% - 20% | ~8% - 12% |
-| **Extreme** | 1000 Balls, Physics ON | 30% - 50%+ | ~15% - 25%+ |
+The wallpaper engine tracks three external lifecycle signals before rendering:
 
-*Note: Results may vary based on device resolution and screen refresh rate.*
+- wallpaper visibility
+- surface readiness
+- engine destruction
 
-## 🛠 Technical Details
+Rendering starts only when all three allow it. Lifecycle decisions are centralized through a render-state controller so that:
 
-- **Core:** Kotlin & Android WallpaperService.
-- **Graphics:** Android Canvas API with **Bitmap Caching** (glow effects are pre-rendered, with drawing objects reused to minimize allocation pressure).
-- **Physics:** Spatial Binning (Grid-based partitioning).
-- **Architecture:** 
-    - Dedicated `RenderThread` for graphics/logic.
-    - `SettingsManager` for centralized, type-safe preference handling.
-    - Jetpack Compose for the configuration UI.
+- duplicate start requests do not create multiple render threads;
+- a stopping thread cannot block a later restart forever;
+- stale thread exits cannot clear a newer renderer reference;
+- a visible engine automatically restarts after a delayed thread shutdown finishes.
+
+The render thread uses a bounded join during stop requests so Android callbacks are not blocked indefinitely.
+
+## Settings
+
+Bouncer stores wallpaper preferences in `SharedPreferences` and validates values in `SettingsManager` before the renderer reads them. Existing palette strings from earlier builds remain readable and are migrated logically to stable palette identifiers.
+
+Backup is enabled for the wallpaper preference file so users keep their settings across device restore and transfer flows.
+
+## Testing
+
+### Local verification
+
+On Windows:
+
+```powershell
+.\gradlew.bat clean
+.\gradlew.bat testDebugUnitTest
+.\gradlew.bat lintDebug
+.\gradlew.bat assembleDebug
+.\gradlew.bat bundleRelease
+```
+
+If a device or emulator is available:
+
+```powershell
+.\gradlew.bat connectedDebugAndroidTest
+```
+
+### Lifecycle stress checks
+
+1. Apply Bouncer as the live wallpaper.
+2. Switch repeatedly between the launcher and other apps.
+3. Lock and unlock the device repeatedly.
+4. Enter and leave wallpaper preview.
+5. Open and close wallpaper settings.
+6. Test 10, 50, 250, and 1,000 balls with physics both on and off.
+7. Confirm the wallpaper always resumes rendering when visible and stops rendering when hidden.
+8. Watch Logcat for `BouncerWallpaper` lifecycle, stop-timeout, and restart messages.

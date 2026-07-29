@@ -3,17 +3,40 @@ package net.crunchycodes.bouncer.live.wallpaper
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import net.crunchycodes.bouncer.live.wallpaper.ui.theme.BouncerScreenSaverTheme
-import java.util.Locale
 
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,43 +65,42 @@ class SettingsActivity : ComponentActivity() {
         var lifespanBase by remember { mutableFloatStateOf(settings.lifespanBase) }
         var destroyOnTouch by remember { mutableStateOf(settings.destroyOnTouch) }
 
-        val palettes = listOf("Random", "Neon", "Ocean", "Fire", "Pastel", "Forest")
         val scrollState = rememberScrollState()
 
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Wallpaper Settings") },
+                    title = { Text(stringResource(R.string.settings_title)) },
                     navigationIcon = {
                         IconButton(onClick = { finish() }) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
+                                contentDescription = stringResource(R.string.back),
                             )
                         }
-                    }
+                    },
                 )
-            }
+            },
         ) { padding ->
             Column(
                 modifier = Modifier
                     .padding(padding)
                     .padding(16.dp)
                     .fillMaxWidth()
-                    .verticalScroll(scrollState)
+                    .verticalScroll(scrollState),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(text = "Solid Body Physics")
+                    Text(text = stringResource(R.string.solid_body_physics))
                     Switch(
                         checked = physicsEnabled,
                         onCheckedChange = {
                             physicsEnabled = it
                             settings.physicsEnabled = it
-                        }
+                        },
                     )
                 }
 
@@ -87,86 +109,82 @@ class SettingsActivity : ComponentActivity() {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(text = "Destroy on Touch")
+                    Text(text = stringResource(R.string.destroy_on_touch))
                     Switch(
                         checked = destroyOnTouch,
                         onCheckedChange = {
                             destroyOnTouch = it
                             settings.destroyOnTouch = it
-                        }
+                        },
                     )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text(text = "Ball Count: ${ballCount.toInt()}")
+                Text(text = stringResource(R.string.ball_count_label, ballCount.toInt()))
                 Slider(
                     value = ballCount,
-                    onValueChange = { 
-                        ballCount = it
-                        settings.ballCount = it.toInt()
-                    },
-                    valueRange = 1f..1000f
+                    onValueChange = { ballCount = it },
+                    onValueChangeFinished = { settings.ballCount = ballCount.toInt() },
+                    valueRange = BouncerPhysics.MIN_BALL_COUNT.toFloat()..BouncerPhysics.MAX_BALL_COUNT.toFloat(),
+                )
+                Text(
+                    text = stringResource(R.string.high_ball_count_note),
+                    style = MaterialTheme.typography.bodySmall,
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text(text = "Base Speed: ${String.format(Locale.getDefault(), "%.1f", ballSpeed)}")
+                Text(text = stringResource(R.string.ball_speed_label, ballSpeed))
                 Slider(
                     value = ballSpeed,
-                    onValueChange = { 
-                        ballSpeed = it
-                        settings.ballSpeed = it
-                    },
-                    valueRange = 1f..20f
+                    onValueChange = { ballSpeed = it },
+                    onValueChangeFinished = { settings.ballSpeed = ballSpeed },
+                    valueRange = BouncerPhysics.MIN_BALL_SPEED..BouncerPhysics.MAX_BALL_SPEED,
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 val sizeText = when {
-                    sizeBehavior < -0.1f -> "Shrink (Speed: ${String.format(Locale.getDefault(), "%.1f", -sizeBehavior)})"
-                    sizeBehavior > 0.1f -> "Grow (Speed: ${String.format(Locale.getDefault(), "%.1f", sizeBehavior)})"
-                    else -> "Static Size"
+                    sizeBehavior < -0.1f -> stringResource(R.string.size_behavior_shrink, -sizeBehavior)
+                    sizeBehavior > 0.1f -> stringResource(R.string.size_behavior_grow, sizeBehavior)
+                    else -> stringResource(R.string.size_behavior_static)
                 }
-                Text(text = "Size Behavior: $sizeText")
+                Text(text = stringResource(R.string.size_behavior_label, sizeText))
                 Slider(
                     value = sizeBehavior,
-                    onValueChange = {
-                        sizeBehavior = it
-                        settings.sizeBehavior = it
-                    },
-                    valueRange = -2f..2f
+                    onValueChange = { sizeBehavior = it },
+                    onValueChangeFinished = { settings.sizeBehavior = sizeBehavior },
+                    valueRange = BouncerPhysics.MIN_SIZE_BEHAVIOR..BouncerPhysics.MAX_SIZE_BEHAVIOR,
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text(text = "Avg Lifespan: ${lifespanBase.toInt()}s")
+                Text(text = stringResource(R.string.lifespan_label, lifespanBase.toInt()))
                 Slider(
                     value = lifespanBase,
-                    onValueChange = {
-                        lifespanBase = it
-                        settings.lifespanBase = it
-                    },
-                    valueRange = 2f..300f
+                    onValueChange = { lifespanBase = it },
+                    onValueChangeFinished = { settings.lifespanBase = lifespanBase },
+                    valueRange = BouncerPhysics.MIN_LIFESPAN_SECONDS..BouncerPhysics.MAX_LIFESPAN_SECONDS,
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text(text = "Color Palette")
-                FlowRow(
+                Text(text = stringResource(R.string.color_palette))
+                androidx.compose.foundation.layout.FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    palettes.forEach { palette ->
+                    ColorPalette.entries.forEach { palette ->
                         FilterChip(
                             selected = selectedPalette == palette,
                             onClick = {
                                 selectedPalette = palette
                                 settings.palette = palette
                             },
-                            label = { Text(palette) }
+                            label = { Text(stringResource(palette.labelRes)) },
                         )
                     }
                 }

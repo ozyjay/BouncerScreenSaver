@@ -5,7 +5,8 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 
 class SettingsManager(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     companion object {
         private const val PREFS_NAME = "bouncer_prefs"
@@ -19,28 +20,40 @@ class SettingsManager(context: Context) {
     }
 
     var ballCount: Int
-        get() = prefs.getInt(KEY_BALL_COUNT, 50)
-        set(value) = prefs.edit { putInt(KEY_BALL_COUNT, value) }
+        get() = BouncerPhysics.clampBallCount(
+            prefs.getInt(KEY_BALL_COUNT, BouncerPhysics.DEFAULT_BALL_COUNT),
+        )
+        set(value) = prefs.edit { putInt(KEY_BALL_COUNT, BouncerPhysics.clampBallCount(value)) }
 
     var ballSpeed: Float
-        get() = prefs.getFloat(KEY_BALL_SPEED, 5f)
-        set(value) = prefs.edit { putFloat(KEY_BALL_SPEED, value) }
+        get() = BouncerPhysics.clampBallSpeed(
+            prefs.getFloat(KEY_BALL_SPEED, BouncerPhysics.DEFAULT_BALL_SPEED),
+        )
+        set(value) = prefs.edit { putFloat(KEY_BALL_SPEED, BouncerPhysics.clampBallSpeed(value)) }
 
-    var palette: String
-        get() = prefs.getString(KEY_PALETTE, "Random") ?: "Random"
-        set(value) = prefs.edit { putString(KEY_PALETTE, value) }
+    var palette: ColorPalette
+        get() = ColorPalette.fromStoredValue(prefs.getString(KEY_PALETTE, ColorPalette.RANDOM.id))
+        set(value) = prefs.edit { putString(KEY_PALETTE, value.id) }
 
     var physicsEnabled: Boolean
         get() = prefs.getBoolean(KEY_PHYSICS, true)
         set(value) = prefs.edit { putBoolean(KEY_PHYSICS, value) }
 
     var sizeBehavior: Float
-        get() = prefs.getFloat(KEY_SIZE_BEHAVIOR, -0.5f)
-        set(value) = prefs.edit { putFloat(KEY_SIZE_BEHAVIOR, value) }
+        get() = BouncerPhysics.clampSizeBehavior(
+            prefs.getFloat(KEY_SIZE_BEHAVIOR, BouncerPhysics.DEFAULT_SIZE_BEHAVIOR),
+        )
+        set(value) = prefs.edit {
+            putFloat(KEY_SIZE_BEHAVIOR, BouncerPhysics.clampSizeBehavior(value))
+        }
 
     var lifespanBase: Float
-        get() = prefs.getFloat(KEY_LIFESPAN, 15f)
-        set(value) = prefs.edit { putFloat(KEY_LIFESPAN, value) }
+        get() = BouncerPhysics.clampLifespanSeconds(
+            prefs.getFloat(KEY_LIFESPAN, BouncerPhysics.DEFAULT_LIFESPAN_SECONDS),
+        )
+        set(value) = prefs.edit {
+            putFloat(KEY_LIFESPAN, BouncerPhysics.clampLifespanSeconds(value))
+        }
 
     var destroyOnTouch: Boolean
         get() = prefs.getBoolean(KEY_DESTROY_ON_TOUCH, false)
