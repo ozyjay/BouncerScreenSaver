@@ -71,6 +71,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.isActive
 import net.crunchycodes.bouncer.live.wallpaper.ui.theme.BouncerScreenSaverTheme
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.random.Random
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Color as AndroidColor
@@ -230,6 +233,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun BouncerSimulationBackground() {
         val lifecycleOwner = LocalLifecycleOwner.current
+        val simulationSettings = rememberDashboardSimulationSettings()
         val balls = remember { mutableStateListOf<LauncherBall>() }
         val glowBitmap = remember { createGlowBitmap() }
         val glowRect = remember { RectF() }
@@ -265,12 +269,6 @@ class MainActivity : ComponentActivity() {
             val width = size.width
             val height = size.height
 
-            if (width > 0f && height > 0f && balls.isEmpty()) {
-                repeat(LauncherSimulation.BALL_COUNT) {
-                    balls += createUiBall(width, height)
-                }
-            }
-
             drawIntoCanvas { canvas ->
                 for (ball in balls) {
                     glowPaint.colorFilter = colorFilters.getOrPut(ball.color.toArgb()) {
@@ -288,8 +286,15 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        LaunchedEffect(isRunning, canvasSize) {
+        LaunchedEffect(isRunning, canvasSize, simulationSettings) {
             if (!isRunning || canvasSize == Size.Zero) return@LaunchedEffect
+
+            // Rebuild the lightweight dashboard population whenever the relevant wallpaper
+            // settings change so the landing page reflects the current customization.
+            balls.clear()
+            repeat(simulationSettings.ballCount) {
+                balls += createUiBall(canvasSize.width, canvasSize.height, simulationSettings)
+            }
 
             var previousFrameNanos = 0L
             while (isActive && isRunning) {
@@ -334,18 +339,74 @@ class MainActivity : ComponentActivity() {
         return bitmap
     }
 
+    @Composable
+    private fun rememberDashboardSimulationSettings(): DashboardSimulationSettings {
+        val context = LocalContext.current
+        val settings = remember(context) { SettingsManager(context) }
+        var simulationSettings by remember { mutableStateOf(settings.toDashboardSimulationSettings()) }
+
+        DisposableEffect(settings) {
+            val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                if (key == null || DASHBOARD_SETTING_KEYS.contains(key)) {
+                    simulationSettings = settings.toDashboardSimulationSettings()
+                }
+            }
+            settings.registerListener(listener)
+            onDispose {
+                settings.unregisterListener(listener)
+            }
+        }
+
+        return simulationSettings
+    }
+
     private fun isBouncerWallpaperApplied(context: android.content.Context): Boolean {
         val currentWallpaper = WallpaperManager.getInstance(context).wallpaperInfo ?: return false
         return currentWallpaper.packageName == context.packageName &&
             currentWallpaper.serviceName == ComponentName(context, BouncerWallpaperService::class.java).className
     }
 
-    private fun createUiBall(width: Float, height: Float): LauncherBall = LauncherBall(
-        x = Random.nextFloat() * width,
-        y = Random.nextFloat() * height,
-        dx = (Random.nextFloat() - 0.5f) * 180f,
-        dy = (Random.nextFloat() - 0.5f) * 180f,
-        radius = Random.nextFloat() * 50f + 20f,
-        color = Color(Random.nextFloat(), Random.nextFloat(), Random.nextFloat(), 0.5f),
+    private fun createUiBall(
+        width: Float,
+        height: Float,
+        settings: DashboardSimulationSettings,
+    ): LauncherBall {
+        val radius = Random.nextFloat() * 50f + 20f
+        val angle = Random.nextFloat() * 2f * PI.toFloat()
+        val speed = Random.nextFloat() * settings.ballSpeed * 9f + settings.ballSpeed * 9f
+        return LauncherBall(
+            x = Random.nextFloat() * (width - radius * 2f) + radius,
+            y = Random.nextFloat() * (height - radius * 2f) + radius,
+            dx = cos(angle) * speed,
+            dy = sin(angle) * speed,
+            radius = radius,
+            color = Color(settings.palette.randomColor(DashboardRandomSource)).copy(alpha = 0.5f),
+        )
+    }
+
+    private fun SettingsManager.toDashboardSimulationSettings(): DashboardSimulationSettings =
+        DashboardSimulationSettings(
+            ballCount = ballCount,
+            ballSpeed = ballSpeed,
+            palette = palette,
+        )
+
+    private data class DashboardSimulationSettings(
+        val ballCount: Int,
+        val ballSpeed: Float,
+        val palette: ColorPalette,
     )
+
+    private companion object {
+        val DASHBOARD_SETTING_KEYS = setOf(
+            SettingsManager.KEY_BALL_COUNT,
+            SettingsManager.KEY_BALL_SPEED,
+            SettingsManager.KEY_PALETTE,
+        )
+
+        val DashboardRandomSource = object : RandomSource {
+            override fun nextFloat(): Float = Random.nextFloat()
+            override fun nextInt(until: Int): Int = Random.nextInt(until)
+        }
+    }
 }
