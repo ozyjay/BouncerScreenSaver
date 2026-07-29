@@ -9,7 +9,8 @@ import org.junit.Rule
 import org.junit.Test
 
 class MainActivityTest {
-
+    // Freeze the Compose test clock so the always-animating dashboard background does not keep
+    // the test environment perpetually busy.
     @get:Rule
     val composeTestRule = createAndroidComposeRule<MainActivity>()
 

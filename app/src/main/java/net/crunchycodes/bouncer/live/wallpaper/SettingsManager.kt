@@ -19,6 +19,8 @@ class SettingsManager(context: Context) {
         const val KEY_DESTROY_ON_TOUCH = "destroy_on_touch"
     }
 
+    // Clamp again at the storage boundary so invalid persisted values cannot destabilize
+    // the renderer even if they came from an older build or external tooling.
     var ballCount: Int
         get() = BouncerPhysics.clampBallCount(
             prefs.getInt(KEY_BALL_COUNT, BouncerPhysics.DEFAULT_BALL_COUNT),

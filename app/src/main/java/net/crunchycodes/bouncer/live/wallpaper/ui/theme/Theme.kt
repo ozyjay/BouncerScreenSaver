@@ -39,6 +39,7 @@ fun BouncerScreenSaverTheme(
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    // Prefer Material You when available, but keep deterministic fallback palettes for older devices.
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current

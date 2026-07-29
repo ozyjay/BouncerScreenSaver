@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherSimulationTest {
+    // The dashboard background deliberately stays simple, but its timing still needs coverage.
     @Test
     fun updateUsesElapsedTimeAndKeepsBallsInBounds() {
         val ball = LauncherBall(

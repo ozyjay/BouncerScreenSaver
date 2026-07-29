@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RenderLifecycleControllerTest {
+    // This suite protects the thread-ownership edge cases that previously caused freeze-ups.
     @Test
     fun visibleSurfaceReadyStateStartsRendering() {
         val controller = RenderLifecycleController()

@@ -57,6 +57,8 @@ class SettingsActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun SettingsScreen(settings: SettingsManager) {
+        // Keep slider state local while dragging so the UI stays responsive; persist only
+        // when the gesture completes to avoid writing preferences on every frame.
         var ballCount by remember { mutableFloatStateOf(settings.ballCount.toFloat()) }
         var ballSpeed by remember { mutableFloatStateOf(settings.ballSpeed) }
         var selectedPalette by remember { mutableStateOf(settings.palette) }

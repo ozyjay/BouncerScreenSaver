@@ -26,6 +26,8 @@ internal class RenderLifecycleController {
     fun updateRenderingState(): RenderAction {
         if (shouldRender()) {
             if (currentThreadId == null) {
+                // Thread ids are logical ownership tokens, not OS thread ids. They let the
+                // engine ignore delayed exits from older threads after a restart.
                 val threadId = nextThreadId++
                 currentThreadId = threadId
                 currentThreadStopping = false
@@ -54,6 +56,8 @@ internal class RenderLifecycleController {
             return ThreadExitResult(cleared = true)
         }
 
+        // If rendering is still required, immediately reserve the replacement slot so a
+        // stale exit callback cannot race in and clear it afterward.
         val replacementThreadId = nextThreadId++
         currentThreadId = replacementThreadId
         return ThreadExitResult(cleared = true, restartThreadId = replacementThreadId)

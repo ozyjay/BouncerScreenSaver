@@ -16,6 +16,7 @@ internal data class BallState(
     var alpha: Float = 1f,
     val id: Long = 0L,
 ) {
+    // Mass and cached tint are derived at runtime because radius and draw state change over time.
     var mass: Float = 1f
     var colorFilter: ColorFilter? = null
 }

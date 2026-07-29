@@ -13,6 +13,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SettingsManagerTest {
+    // Instrumentation is used here because SharedPreferences persistence is part of the contract.
     private lateinit var settingsManager: SettingsManager
     private val appContext: Context
         get() = InstrumentationRegistry.getInstrumentation().targetContext

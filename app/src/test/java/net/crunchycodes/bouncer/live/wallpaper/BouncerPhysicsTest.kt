@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BouncerPhysicsTest {
+    // These tests pin the small math helpers that keep the render loop stable at high counts.
     @Test
     fun growingRadiusIsLimitedBySurface() {
         val radius = BouncerPhysics.radiusForSurface(

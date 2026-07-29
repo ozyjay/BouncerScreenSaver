@@ -272,6 +272,8 @@ class MainActivity : ComponentActivity() {
 
             var previousFrameNanos = 0L
             while (isActive && isRunning) {
+                // Drive the background from frame time so motion stays consistent across
+                // refresh rates and pauses cleanly when the activity stops.
                 withFrameNanos { frameTimeNanos ->
                     if (previousFrameNanos == 0L) {
                         previousFrameNanos = frameTimeNanos
@@ -294,6 +296,7 @@ class MainActivity : ComponentActivity() {
         val size = 200
         val bitmap = createBitmap(size, size)
         val canvas = AndroidCanvas(bitmap)
+        // Cache a single white radial glow and tint it per ball during drawing.
         val paint = AndroidPaint().apply {
             isAntiAlias = true
             shader = RadialGradient(

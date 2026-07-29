@@ -27,6 +27,8 @@ class BouncerWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine = BouncerEngine()
 
     inner class BouncerEngine : Engine() {
+        // Engine callbacks can arrive from different lifecycle edges while the render
+        // thread is starting or stopping, so thread ownership changes stay behind one lock.
         private val lifecycleLock = Any()
         private val lifecycleController = RenderLifecycleController()
 
@@ -84,6 +86,8 @@ class BouncerWallpaperService : WallpaperService() {
             actionProvider: RenderLifecycleController.() -> RenderAction,
         ) {
             val joinCandidate = synchronized(lifecycleLock) {
+                // A previous stop may have timed out, so always reconcile dead threads before
+                // asking the controller whether a new start is required.
                 reconcileDeadRenderThreadLocked("pre-update:$reason")
                 handleRenderActionLocked(lifecycleController.actionProvider(), reason)
             }
@@ -129,6 +133,8 @@ class BouncerWallpaperService : WallpaperService() {
             if (thread == null) return
 
             try {
+                // Use a bounded join so framework lifecycle callbacks never block forever on
+                // a thread that is slow to leave lockCanvas() or sleep().
                 thread.join(RENDER_THREAD_STOP_TIMEOUT_MS)
                 if (thread.isAlive) {
                     Log.w(
@@ -212,6 +218,7 @@ class BouncerWallpaperService : WallpaperService() {
 
             init {
                 applySettings(null)
+                // Build the glow sprite once per render thread and reuse it for every ball.
                 val canvas = Canvas(glowBitmap)
                 val paint = Paint().apply {
                     isAntiAlias = true
@@ -242,6 +249,8 @@ class BouncerWallpaperService : WallpaperService() {
                         try {
                             canvas = surfaceHolder.lockCanvas()
                             if (canvas != null) {
+                                // Physics and drawing stay on the same thread so ball state
+                                // is never read mid-update by another renderer.
                                 updateState(canvas.width, canvas.height, deltaTime)
                                 drawFrame(canvas)
                             }
@@ -403,6 +412,8 @@ class BouncerWallpaperService : WallpaperService() {
 
             private fun resolveCollisions(width: Int, height: Int) {
                 grid.values.forEach(MutableList<BallState>::clear)
+                // Partition the surface into bins so each ball only checks nearby neighbors
+                // instead of naively iterating the full population.
                 val cellSize = BouncerPhysics.collisionCellSize(balls.maxOfOrNull(BallState::radius) ?: 0f)
                 val cols = (width / cellSize).toInt() + 1
                 val rows = (height / cellSize).toInt() + 1

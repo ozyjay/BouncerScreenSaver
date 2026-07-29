@@ -67,6 +67,7 @@ enum class ColorPalette(
     );
 
     internal fun randomColor(randomSource: RandomSource): Int {
+        // "Random" bypasses the fixed palettes and generates a fresh RGB color per ball.
         val paletteColors = colors ?: return Color.argb(
             255,
             randomSource.nextInt(256),
@@ -79,6 +80,7 @@ enum class ColorPalette(
     companion object {
         private val byId = entries.associateBy(ColorPalette::id)
 
+        // Older builds stored user-facing names, so keep accepting them during upgrade.
         fun fromStoredValue(value: String?): ColorPalette = when (value?.trim()) {
             null, "", "Random", "random" -> RANDOM
             "Neon", "neon" -> NEON

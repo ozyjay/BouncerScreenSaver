@@ -57,6 +57,8 @@ internal object BouncerPhysics {
         max(MIN_COLLISION_CELL_SIZE, maxRadius.coerceAtLeast(0f) * 2f)
 
     fun ballsToSpawn(currentCount: Int, targetCount: Int, maxBatch: Int = MAX_SPAWN_BATCH): Int {
+        // Spawn in batches so jumping from a small count to 1,000 does not create a single
+        // expensive frame full of allocations and collision work.
         val deficit = clampBallCount(targetCount) - currentCount.coerceAtLeast(0)
         return deficit.coerceAtLeast(0).coerceAtMost(maxBatch.coerceAtLeast(1))
     }
@@ -91,6 +93,8 @@ internal object BouncerPhysics {
     }
 
     fun ensureFiniteBall(ball: BallState, width: Int, height: Int, allowStopped: Boolean) {
+        // Corrupted physics values are rare but catastrophic when they happen. Repair them
+        // in place so one bad collision or preference value does not poison later frames.
         val fallbackRadius = if (ball.initialRadius.isFinite() && ball.initialRadius > 0f) {
             ball.initialRadius.coerceAtLeast(MIN_RADIUS)
         } else {
@@ -144,6 +148,8 @@ internal object BouncerPhysics {
         val safeSecondMass = second.mass.coerceAtLeast(1f)
         val totalMass = safeFirstMass + safeSecondMass
 
+        // Separate before applying impulse so overlapping balls do not remain embedded in
+        // each other or get pushed outside the visible surface.
         first.x -= normalX * overlap * (safeSecondMass / totalMass)
         first.y -= normalY * overlap * (safeSecondMass / totalMass)
         second.x += normalX * overlap * (safeFirstMass / totalMass)

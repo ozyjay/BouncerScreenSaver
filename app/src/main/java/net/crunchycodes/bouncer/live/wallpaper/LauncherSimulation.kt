@@ -17,6 +17,9 @@ internal object LauncherSimulation {
     fun update(balls: List<LauncherBall>, width: Float, height: Float, deltaSeconds: Float) {
         if (width <= 0f || height <= 0f) return
         for (ball in balls) {
+            // The dashboard animation is intentionally simpler than the wallpaper engine:
+            // just enough motion to give the launcher screen some life without duplicating
+            // the full collision system.
             ball.x += ball.dx * deltaSeconds
             ball.y += ball.dy * deltaSeconds
 

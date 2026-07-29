@@ -6,6 +6,7 @@ import org.junit.Test
 class BallTest {
     @Test
     fun ballMassDefaultsCanBeUpdatedFromRadius() {
+        // Keep this tiny test around because mass is recalculated manually in the render loop.
         val ball = BallState(
             x = 100f,
             y = 200f,
