@@ -7,7 +7,7 @@ import kotlin.math.sqrt
 
 internal object BouncerPhysics {
     const val MIN_BALL_COUNT = 1
-    const val MAX_BALL_COUNT = 100
+    const val MAX_BALL_COUNT = 300
     const val MAX_SPAWN_BATCH = 24
     const val MIN_COLLISION_CELL_SIZE = 100f
     const val MIN_RADIUS = 5f
