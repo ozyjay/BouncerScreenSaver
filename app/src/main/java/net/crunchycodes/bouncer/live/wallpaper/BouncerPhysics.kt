@@ -7,7 +7,7 @@ import kotlin.math.sqrt
 
 internal object BouncerPhysics {
     const val MIN_BALL_COUNT = 1
-    const val MAX_BALL_COUNT = 1_000
+    const val MAX_BALL_COUNT = 100
     const val MAX_SPAWN_BATCH = 24
     const val MIN_COLLISION_CELL_SIZE = 100f
     const val MIN_RADIUS = 5f
@@ -57,7 +57,7 @@ internal object BouncerPhysics {
         max(MIN_COLLISION_CELL_SIZE, maxRadius.coerceAtLeast(0f) * 2f)
 
     fun ballsToSpawn(currentCount: Int, targetCount: Int, maxBatch: Int = MAX_SPAWN_BATCH): Int {
-        // Spawn in batches so jumping from a small count to 1,000 does not create a single
+        // Spawn in batches so jumping from a small count to the configured max does not create a single
         // expensive frame full of allocations and collision work.
         val deficit = clampBallCount(targetCount) - currentCount.coerceAtLeast(0)
         return deficit.coerceAtLeast(0).coerceAtMost(maxBatch.coerceAtLeast(1))

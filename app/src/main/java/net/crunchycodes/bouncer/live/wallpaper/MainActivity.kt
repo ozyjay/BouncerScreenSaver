@@ -90,6 +90,19 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun DashboardScreen() {
         val context = LocalContext.current
+        var showApplyWallpaper by remember { mutableStateOf(!isBouncerWallpaperApplied(context)) }
+
+        DisposableEffect(context) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    showApplyWallpaper = !isBouncerWallpaperApplied(context)
+                }
+            }
+            lifecycle.addObserver(observer)
+            onDispose {
+                lifecycle.removeObserver(observer)
+            }
+        }
 
         Box(
             modifier = Modifier
@@ -139,7 +152,7 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Text(
-                        text = "${stringResource(R.string.dashboard_subtitle)} ($versionInfo)",
+                        text = "${stringResource(R.string.dashboard_subtitle)} (v$versionInfo)",
                         color = Color.White.copy(alpha = 0.7f),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
@@ -148,33 +161,35 @@ class MainActivity : ComponentActivity() {
 
                     Spacer(modifier = Modifier.height(48.dp))
 
-                    Button(
-                        onClick = {
-                            val intent =
-                                Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
-                                    putExtra(
-                                        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                                        ComponentName(context, BouncerWallpaperService::class.java),
-                                    )
-                                }
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(64.dp)
-                            .clip(RoundedCornerShape(16.dp)),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.set_wallpaper),
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 2.sp,
-                        )
-                    }
+                    if (showApplyWallpaper) {
+                        Button(
+                            onClick = {
+                                val intent =
+                                    Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
+                                        putExtra(
+                                            WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                                            ComponentName(context, BouncerWallpaperService::class.java),
+                                        )
+                                    }
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp)
+                                .clip(RoundedCornerShape(16.dp)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.set_wallpaper),
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.sp,
+                            )
+                        }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
 
                     OutlinedButton(
                         onClick = {
@@ -317,6 +332,12 @@ class MainActivity : ComponentActivity() {
         }
         canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
         return bitmap
+    }
+
+    private fun isBouncerWallpaperApplied(context: android.content.Context): Boolean {
+        val currentWallpaper = WallpaperManager.getInstance(context).wallpaperInfo ?: return false
+        return currentWallpaper.packageName == context.packageName &&
+            currentWallpaper.serviceName == ComponentName(context, BouncerWallpaperService::class.java).className
     }
 
     private fun createUiBall(width: Float, height: Float): LauncherBall = LauncherBall(

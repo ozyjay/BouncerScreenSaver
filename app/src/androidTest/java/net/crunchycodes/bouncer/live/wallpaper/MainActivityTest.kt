@@ -27,7 +27,7 @@ class MainActivityTest {
     @Test
     fun dashboardDisplay() {
         composeTestRule.onNodeWithText("BOUNCER").assertExists()
-        composeTestRule.onNodeWithText("Set Wallpaper").assertExists()
+        composeTestRule.onNodeWithText("Apply Wallpaper").assertExists()
         composeTestRule.onNodeWithText("Customize").assertExists()
     }
 

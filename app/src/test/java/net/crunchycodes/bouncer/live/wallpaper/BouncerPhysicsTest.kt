@@ -46,13 +46,13 @@ class BouncerPhysicsTest {
         var current = 0
         var frames = 0
 
-        while (current < 1_000) {
-            current += BouncerPhysics.ballsToSpawn(current, 1_000)
+        while (current < BouncerPhysics.MAX_BALL_COUNT) {
+            current += BouncerPhysics.ballsToSpawn(current, BouncerPhysics.MAX_BALL_COUNT)
             frames++
         }
 
-        assertEquals(24, BouncerPhysics.ballsToSpawn(0, 1_000))
-        assertEquals(1_000, current)
+        assertEquals(24, BouncerPhysics.ballsToSpawn(0, BouncerPhysics.MAX_BALL_COUNT))
+        assertEquals(BouncerPhysics.MAX_BALL_COUNT, current)
         assertTrue(frames > 1)
     }
 
