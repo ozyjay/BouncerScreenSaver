@@ -120,6 +120,8 @@ class MainActivity : ComponentActivity() {
                     verticalArrangement = Arrangement.Bottom,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    val versionInfo = BuildConfig.VERSION_NAME
+
                     Image(
                         bitmap = ImageBitmap.imageResource(R.drawable.ic_launcher_art),
                         contentDescription = null,
@@ -136,7 +138,7 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Text(
-                        text = stringResource(R.string.dashboard_subtitle),
+                        text = "${stringResource(R.string.dashboard_subtitle)} ($versionInfo)",
                         color = Color.White.copy(alpha = 0.7f),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
