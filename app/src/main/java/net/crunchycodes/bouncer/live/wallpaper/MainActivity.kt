@@ -83,6 +83,9 @@ import kotlin.random.Random
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint as AndroidPaint
+import android.hardware.display.DisplayManager
+import android.os.Build
+import android.view.Display
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -493,7 +496,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun detectRefreshRateHz(context: Context): Float =
-        DevicePerformance.normalizeRefreshRateHz(context.display.refreshRate)
+        DevicePerformance.normalizeRefreshRateHz(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.getSystemService(DisplayManager::class.java)
+                    ?.getDisplay(Display.DEFAULT_DISPLAY)
+                    ?.refreshRate
+                    ?: DevicePerformance.FALLBACK_REFRESH_RATE_HZ
+            } else {
+                @Suppress("DEPRECATION")
+                (getSystemService(WINDOW_SERVICE) as android.view.WindowManager)
+                    .defaultDisplay
+                    .refreshRate
+            },
+        )
 
     private fun SettingsManager.toDashboardSimulationSettings(): DashboardSimulationSettings =
         DashboardSimulationSettings(
