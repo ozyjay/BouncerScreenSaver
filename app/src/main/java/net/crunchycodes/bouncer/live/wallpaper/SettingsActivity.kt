@@ -27,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -69,6 +70,7 @@ class SettingsActivity : ComponentActivity() {
         var lifespanBase by remember { mutableFloatStateOf(settings.lifespanBase) }
         var destroyOnTouch by remember { mutableStateOf(settings.destroyOnTouch) }
         val deviceMaxBallCount = settings.effectiveMaxBallCount()
+        val deviceMaxBallSpeed = settings.effectiveMaxBallSpeed()
         val detectedRefreshRateHz = settings.calibrationRefreshRateHz.roundToInt()
 
         val scrollState = rememberScrollState()
@@ -167,12 +169,25 @@ class SettingsActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                TextButton(
+                    onClick = { finishAffinity() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(text = stringResource(R.string.exit_app))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Text(text = stringResource(R.string.ball_speed_label, ballSpeed))
                 Slider(
                     value = ballSpeed,
                     onValueChange = { ballSpeed = it },
                     onValueChangeFinished = { settings.ballSpeed = ballSpeed },
-                    valueRange = BouncerPhysics.MIN_BALL_SPEED..BouncerPhysics.MAX_BALL_SPEED,
+                    valueRange = BouncerPhysics.MIN_BALL_SPEED..deviceMaxBallSpeed,
+                )
+                Text(
+                    text = stringResource(R.string.ball_speed_cap_note, deviceMaxBallSpeed),
+                    style = MaterialTheme.typography.bodySmall,
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))

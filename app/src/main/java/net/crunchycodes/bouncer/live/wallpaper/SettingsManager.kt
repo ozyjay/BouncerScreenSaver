@@ -22,6 +22,8 @@ internal class SettingsManager(context: Context) {
         const val KEY_CALIBRATION_REFRESH_RATE = "calibration_refresh_rate"
         const val KEY_DEVICE_MAX_BALL_COUNT = "device_max_ball_count"
         const val KEY_RECOMMENDED_BALL_COUNT = "recommended_ball_count"
+        const val KEY_DEVICE_MAX_BALL_SPEED = "device_max_ball_speed"
+        const val KEY_RECOMMENDED_BALL_SPEED = "recommended_ball_speed"
     }
 
     // Clamp again at the storage boundary so invalid persisted values cannot destabilize
@@ -35,10 +37,10 @@ internal class SettingsManager(context: Context) {
         }
 
     var ballSpeed: Float
-        get() = BouncerPhysics.clampBallSpeed(
+        get() = clampBallSpeedForDevice(
             prefs.getFloat(KEY_BALL_SPEED, BouncerPhysics.DEFAULT_BALL_SPEED),
         )
-        set(value) = prefs.edit { putFloat(KEY_BALL_SPEED, BouncerPhysics.clampBallSpeed(value)) }
+        set(value) = prefs.edit { putFloat(KEY_BALL_SPEED, clampBallSpeedForDevice(value)) }
 
     var palette: ColorPalette
         get() = ColorPalette.fromStoredValue(prefs.getString(KEY_PALETTE, ColorPalette.RANDOM.id))
@@ -101,20 +103,52 @@ internal class SettingsManager(context: Context) {
             putInt(KEY_RECOMMENDED_BALL_COUNT, clampBallCountForDevice(value))
         }
 
+    var deviceMaxBallSpeed: Float
+        get() = prefs.getFloat(
+            KEY_DEVICE_MAX_BALL_SPEED,
+            DevicePerformance.deviceMaxBallSpeed(deviceBallCountCeiling()),
+        ).coerceIn(BouncerPhysics.MIN_BALL_SPEED, BouncerPhysics.MAX_BALL_SPEED)
+        set(value) = prefs.edit {
+            putFloat(
+                KEY_DEVICE_MAX_BALL_SPEED,
+                value.coerceIn(BouncerPhysics.MIN_BALL_SPEED, BouncerPhysics.MAX_BALL_SPEED),
+            )
+        }
+
+    var recommendedBallSpeed: Float
+        get() = clampBallSpeedForDevice(
+            prefs.getFloat(
+                KEY_RECOMMENDED_BALL_SPEED,
+                DevicePerformance.recommendedBallSpeed(deviceBallCountCeiling()),
+            ),
+        )
+        set(value) = prefs.edit {
+            putFloat(KEY_RECOMMENDED_BALL_SPEED, clampBallSpeedForDevice(value))
+        }
+
     fun effectiveMaxBallCount(): Int = deviceBallCountCeiling()
+    fun effectiveMaxBallSpeed(): Float = deviceMaxBallSpeed
 
     fun persistCalibrationResult(result: DeviceCalibrationResult) {
         val deviceCap = result.deviceMaxBallCount
             .coerceIn(BouncerPhysics.MIN_BALL_COUNT, BouncerPhysics.MAX_BALL_COUNT)
         val recommended = result.recommendedBallCount
             .coerceIn(BouncerPhysics.MIN_BALL_COUNT, deviceCap)
+        val deviceSpeedCap = result.deviceMaxBallSpeed
+            .coerceIn(BouncerPhysics.MIN_BALL_SPEED, BouncerPhysics.MAX_BALL_SPEED)
+        val recommendedSpeed = result.recommendedBallSpeed
+            .coerceIn(BouncerPhysics.MIN_BALL_SPEED, deviceSpeedCap)
         val existingBallCount = prefs.getInt(KEY_BALL_COUNT, recommended)
+        val existingBallSpeed = prefs.getFloat(KEY_BALL_SPEED, recommendedSpeed)
         prefs.edit {
             putBoolean(KEY_HAS_COMPLETED_CALIBRATION, true)
             putFloat(KEY_CALIBRATION_REFRESH_RATE, DevicePerformance.normalizeRefreshRateHz(result.refreshRateHz))
             putInt(KEY_DEVICE_MAX_BALL_COUNT, deviceCap)
             putInt(KEY_RECOMMENDED_BALL_COUNT, recommended)
+            putFloat(KEY_DEVICE_MAX_BALL_SPEED, deviceSpeedCap)
+            putFloat(KEY_RECOMMENDED_BALL_SPEED, recommendedSpeed)
             putInt(KEY_BALL_COUNT, existingBallCount.coerceIn(BouncerPhysics.MIN_BALL_COUNT, deviceCap))
+            putFloat(KEY_BALL_SPEED, existingBallSpeed.coerceIn(BouncerPhysics.MIN_BALL_SPEED, deviceSpeedCap))
         }
     }
 
@@ -127,11 +161,25 @@ internal class SettingsManager(context: Context) {
                 KEY_RECOMMENDED_BALL_COUNT,
                 DevicePerformance.recommendedBallCount(DevicePerformance.fallbackMaxBallCount()),
             )
+            putFloat(
+                KEY_DEVICE_MAX_BALL_SPEED,
+                DevicePerformance.deviceMaxBallSpeed(DevicePerformance.fallbackMaxBallCount()),
+            )
+            putFloat(
+                KEY_RECOMMENDED_BALL_SPEED,
+                DevicePerformance.recommendedBallSpeed(DevicePerformance.fallbackMaxBallCount()),
+            )
             putInt(
                 KEY_BALL_COUNT,
                 min(
                     clampBallCountForDevice(ballCount),
                     DevicePerformance.recommendedBallCount(DevicePerformance.fallbackMaxBallCount()),
+                ),
+            )
+            putFloat(
+                KEY_BALL_SPEED,
+                clampBallSpeedForDevice(ballSpeed).coerceAtMost(
+                    DevicePerformance.recommendedBallSpeed(DevicePerformance.fallbackMaxBallCount()),
                 ),
             )
         }
@@ -155,4 +203,7 @@ internal class SettingsManager(context: Context) {
 
     private fun clampBallCountForDevice(value: Int): Int =
         value.coerceIn(BouncerPhysics.MIN_BALL_COUNT, deviceBallCountCeiling())
+
+    private fun clampBallSpeedForDevice(value: Float): Float =
+        value.coerceIn(BouncerPhysics.MIN_BALL_SPEED, deviceMaxBallSpeed)
 }

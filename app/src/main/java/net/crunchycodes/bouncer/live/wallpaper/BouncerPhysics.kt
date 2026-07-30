@@ -16,7 +16,7 @@ internal object BouncerPhysics {
     const val DEFAULT_SIZE_BEHAVIOR = -0.5f
     const val DEFAULT_LIFESPAN_SECONDS = 15f
     const val MIN_BALL_SPEED = 1f
-    const val MAX_BALL_SPEED = 20f
+    const val MAX_BALL_SPEED = 10f
     const val MIN_SIZE_BEHAVIOR = -2f
     const val MAX_SIZE_BEHAVIOR = 2f
     const val MIN_LIFESPAN_SECONDS = 2f

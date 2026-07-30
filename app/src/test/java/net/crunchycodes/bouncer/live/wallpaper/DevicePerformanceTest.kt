@@ -53,23 +53,15 @@ class DevicePerformanceTest {
     fun renderQualityUsesFlatModeOnLowCapDevices() {
         assertEquals(
             RenderQuality.Flat,
-            DevicePerformance.renderQuality(
-                deviceMaxBallCount = 48,
-                activeBallCount = 48,
-                configuredBallCount = 48,
-            ),
+            DevicePerformance.renderQuality(deviceMaxBallCount = 48),
         )
     }
 
     @Test
-    fun renderQualityUsesFlatModeWhileRuntimeThrottled() {
+    fun renderQualityKeepsGlowWhileRuntimeThrottledOnCapableDevices() {
         assertEquals(
-            RenderQuality.Flat,
-            DevicePerformance.renderQuality(
-                deviceMaxBallCount = 120,
-                activeBallCount = 72,
-                configuredBallCount = 100,
-            ),
+            RenderQuality.Glow,
+            DevicePerformance.renderQuality(deviceMaxBallCount = 120),
         )
     }
 
@@ -77,11 +69,22 @@ class DevicePerformanceTest {
     fun renderQualityKeepsGlowWhenHeadroomIsHealthy() {
         assertEquals(
             RenderQuality.Glow,
-            DevicePerformance.renderQuality(
-                deviceMaxBallCount = 120,
-                activeBallCount = 100,
-                configuredBallCount = 100,
-            ),
+            DevicePerformance.renderQuality(deviceMaxBallCount = 120),
         )
+    }
+
+    @Test
+    fun deviceMaxBallSpeedGetsMoreConservativeOnLowerCapDevices() {
+        assertTrue(DevicePerformance.deviceMaxBallSpeed(24) < DevicePerformance.deviceMaxBallSpeed(120))
+        assertTrue(DevicePerformance.deviceMaxBallSpeed(120) <= BouncerPhysics.MAX_BALL_SPEED)
+    }
+
+    @Test
+    fun recommendedBallSpeedStaysWithinDeviceCap() {
+        val deviceCap = DevicePerformance.deviceMaxBallSpeed(48)
+        val recommended = DevicePerformance.recommendedBallSpeed(48)
+
+        assertTrue(recommended <= deviceCap)
+        assertTrue(recommended >= BouncerPhysics.MIN_BALL_SPEED)
     }
 }

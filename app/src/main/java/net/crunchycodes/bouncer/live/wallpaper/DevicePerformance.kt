@@ -16,6 +16,8 @@ internal data class DeviceCalibrationResult(
     val frameBudgetNanos: Long,
     val deviceMaxBallCount: Int,
     val recommendedBallCount: Int,
+    val deviceMaxBallSpeed: Float,
+    val recommendedBallSpeed: Float,
     val usedFallback: Boolean,
 )
 
@@ -36,6 +38,9 @@ internal object DevicePerformance {
     private const val GLOW_DEVICE_CAP_THRESHOLD = 64
     private const val STABLE_P95_MULTIPLIER = 1.1f
     private const val STABLE_DROP_RATIO = 0.05f
+    private const val LOW_CAP_SPEED = 4.5f
+    private const val MID_CAP_SPEED = 6f
+    private const val HIGH_CAP_SPEED = 8f
 
     fun normalizeRefreshRateHz(value: Float): Float {
         if (!value.isFinite() || value <= 0f) return FALLBACK_REFRESH_RATE_HZ
@@ -85,15 +90,20 @@ internal object DevicePerformance {
 
     fun fallbackMaxBallCount(): Int = FALLBACK_MAX_BALL_COUNT
 
-    fun renderQuality(
-        deviceMaxBallCount: Int,
-        activeBallCount: Int,
-        configuredBallCount: Int,
-    ): RenderQuality {
+    fun deviceMaxBallSpeed(deviceMaxBallCount: Int): Float = when {
+        deviceMaxBallCount <= 24 -> LOW_CAP_SPEED
+        deviceMaxBallCount <= 48 -> 5f
+        deviceMaxBallCount <= 72 -> MID_CAP_SPEED
+        deviceMaxBallCount <= 120 -> 7f
+        else -> HIGH_CAP_SPEED
+    }.coerceIn(BouncerPhysics.MIN_BALL_SPEED, BouncerPhysics.MAX_BALL_SPEED)
+
+    fun recommendedBallSpeed(deviceMaxBallCount: Int): Float =
+        (deviceMaxBallSpeed(deviceMaxBallCount) * 0.85f)
+            .coerceIn(BouncerPhysics.MIN_BALL_SPEED, BouncerPhysics.MAX_BALL_SPEED)
+
+    fun renderQuality(deviceMaxBallCount: Int): RenderQuality {
         if (deviceMaxBallCount <= GLOW_DEVICE_CAP_THRESHOLD) {
-            return RenderQuality.Flat
-        }
-        if (activeBallCount < configuredBallCount) {
             return RenderQuality.Flat
         }
         return RenderQuality.Glow

@@ -330,11 +330,7 @@ class BouncerWallpaperService : WallpaperService() {
                                 )
                                 drawFrame(
                                     canvas = canvas,
-                                    quality = DevicePerformance.renderQuality(
-                                        deviceMaxBallCount = deviceMaxBallCount,
-                                        activeBallCount = simulationState.activeBallCount,
-                                        configuredBallCount = runtimeBallController.configuredBallCount(),
-                                    ),
+                                    quality = DevicePerformance.renderQuality(deviceMaxBallCount),
                                 )
                             }
                         } catch (error: Exception) {

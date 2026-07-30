@@ -577,6 +577,8 @@ class MainActivity : ComponentActivity() {
                 frameBudgetNanos = frameBudgetNanos,
                 deviceMaxBallCount = maxBallCount,
                 recommendedBallCount = DevicePerformance.recommendedBallCount(maxBallCount),
+                deviceMaxBallSpeed = DevicePerformance.deviceMaxBallSpeed(maxBallCount),
+                recommendedBallSpeed = DevicePerformance.recommendedBallSpeed(maxBallCount),
                 usedFallback = usedFallback,
             )
         }
