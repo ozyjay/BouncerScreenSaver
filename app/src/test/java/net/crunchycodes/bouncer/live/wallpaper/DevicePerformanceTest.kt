@@ -48,4 +48,40 @@ class DevicePerformanceTest {
         assertTrue(controller.activeBallCount() > reducedBallCount)
         assertTrue(controller.activeBallCount() <= 100)
     }
+
+    @Test
+    fun renderQualityUsesFlatModeOnLowCapDevices() {
+        assertEquals(
+            RenderQuality.Flat,
+            DevicePerformance.renderQuality(
+                deviceMaxBallCount = 48,
+                activeBallCount = 48,
+                configuredBallCount = 48,
+            ),
+        )
+    }
+
+    @Test
+    fun renderQualityUsesFlatModeWhileRuntimeThrottled() {
+        assertEquals(
+            RenderQuality.Flat,
+            DevicePerformance.renderQuality(
+                deviceMaxBallCount = 120,
+                activeBallCount = 72,
+                configuredBallCount = 100,
+            ),
+        )
+    }
+
+    @Test
+    fun renderQualityKeepsGlowWhenHeadroomIsHealthy() {
+        assertEquals(
+            RenderQuality.Glow,
+            DevicePerformance.renderQuality(
+                deviceMaxBallCount = 120,
+                activeBallCount = 100,
+                configuredBallCount = 100,
+            ),
+        )
+    }
 }

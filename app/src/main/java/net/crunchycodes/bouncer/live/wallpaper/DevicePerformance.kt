@@ -19,6 +19,11 @@ internal data class DeviceCalibrationResult(
     val usedFallback: Boolean,
 )
 
+internal enum class RenderQuality {
+    Glow,
+    Flat,
+}
+
 internal object DevicePerformance {
     const val FALLBACK_REFRESH_RATE_HZ = 60f
     const val MIN_SUPPORTED_REFRESH_RATE_HZ = 30f
@@ -28,6 +33,7 @@ internal object DevicePerformance {
     const val CALIBRATION_WARMUP_FRAMES = 12
     const val CALIBRATION_WINDOW_FRAMES = 72
     const val MAX_BAD_WINDOW_STREAK = 2
+    private const val GLOW_DEVICE_CAP_THRESHOLD = 64
     private const val STABLE_P95_MULTIPLIER = 1.1f
     private const val STABLE_DROP_RATIO = 0.05f
 
@@ -79,6 +85,20 @@ internal object DevicePerformance {
 
     fun fallbackMaxBallCount(): Int = FALLBACK_MAX_BALL_COUNT
 
+    fun renderQuality(
+        deviceMaxBallCount: Int,
+        activeBallCount: Int,
+        configuredBallCount: Int,
+    ): RenderQuality {
+        if (deviceMaxBallCount <= GLOW_DEVICE_CAP_THRESHOLD) {
+            return RenderQuality.Flat
+        }
+        if (activeBallCount < configuredBallCount) {
+            return RenderQuality.Flat
+        }
+        return RenderQuality.Glow
+    }
+
     fun nextCalibrationBallCount(current: Int): Int = when {
         current < 60 -> current + 12
         current < 120 -> current + 24
@@ -100,6 +120,8 @@ internal class RuntimeBallCountController(
     private var consecutiveGoodWindows = 0
 
     fun activeBallCount(): Int = activeBallCount
+
+    fun configuredBallCount(): Int = configuredBallCount
 
     fun updateConfiguredBallCount(value: Int) {
         configuredBallCount = clamp(value)

@@ -17,6 +17,7 @@ import android.util.Log
 import android.view.Display
 import android.view.MotionEvent
 import android.view.SurfaceHolder
+import java.util.Arrays
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
@@ -78,6 +79,7 @@ class BouncerWallpaperService : WallpaperService() {
         override fun onCreate(surfaceHolder: SurfaceHolder?) {
             super.onCreate(surfaceHolder)
             applySettings(null)
+            simulationState.prepareCapacity(settings.effectiveMaxBallCount())
             // Settings live for the full engine lifetime so renderer restarts do not churn listeners.
             settings.registerListener(prefListener)
             setTouchEventsEnabled(true)
@@ -271,8 +273,11 @@ class BouncerWallpaperService : WallpaperService() {
 
             private val glowBitmap: Bitmap = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888)
             private val glowPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+            private val ballPaint = Paint(Paint.ANTI_ALIAS_FLAG)
             private val glowDestination = RectF()
-            private val grid = mutableMapOf<Int, MutableList<BallState>>()
+            private var collisionHeads = IntArray(0)
+            private var collisionNext = IntArray(0)
+            private var activeBallIndices = IntArray(0)
 
             init {
                 // Build the glow sprite once per render thread and reuse it for every ball.
@@ -295,9 +300,12 @@ class BouncerWallpaperService : WallpaperService() {
                 var lastFrameNanos = SystemClock.elapsedRealtimeNanos()
                 val targetRefreshRateHz = resolveTargetRefreshRateHz()
                 val targetFrameIntervalNanos = DevicePerformance.frameBudgetNanos(targetRefreshRateHz)
+                val deviceMaxBallCount = settings.effectiveMaxBallCount()
+                simulationState.prepareCapacity(deviceMaxBallCount)
+                ensureCollisionCapacity(deviceMaxBallCount * 4, deviceMaxBallCount)
                 val runtimeBallController = RuntimeBallCountController(
                     configuredBallCount = targetBallCount,
-                    deviceMaxBallCount = settings.effectiveMaxBallCount(),
+                    deviceMaxBallCount = deviceMaxBallCount,
                 )
                 try {
                     while (!stopRequested.get() && !isInterrupted) {
@@ -320,7 +328,14 @@ class BouncerWallpaperService : WallpaperService() {
                                     deltaTime = deltaTime,
                                     desiredBallCount = runtimeBallController.activeBallCount(),
                                 )
-                                drawFrame(canvas)
+                                drawFrame(
+                                    canvas = canvas,
+                                    quality = DevicePerformance.renderQuality(
+                                        deviceMaxBallCount = deviceMaxBallCount,
+                                        activeBallCount = simulationState.activeBallCount,
+                                        configuredBallCount = runtimeBallController.configuredBallCount(),
+                                    ),
+                                )
                             }
                         } catch (error: Exception) {
                             if (!stopRequested.get()) {
@@ -367,22 +382,30 @@ class BouncerWallpaperService : WallpaperService() {
                 }
             }
 
-            private fun drawFrame(canvas: Canvas) {
+            private fun drawFrame(canvas: Canvas, quality: RenderQuality) {
                 canvas.drawColor(Color.BLACK)
                 for (ball in simulationState.balls) {
-                    glowPaint.colorFilter = ball.colorFilter ?: PorterDuffColorFilter(
-                        ball.color,
-                        PorterDuff.Mode.SRC_IN,
-                    ).also { ball.colorFilter = it }
-                    glowPaint.alpha = (ball.alpha * 255).toInt().coerceIn(0, 255)
+                    val alpha = (ball.alpha * 255).toInt().coerceIn(0, 255)
+                    if (alpha <= 0) continue
+                    if (quality == RenderQuality.Glow) {
+                        glowPaint.colorFilter = ball.colorFilter ?: PorterDuffColorFilter(
+                            ball.color,
+                            PorterDuff.Mode.SRC_IN,
+                        ).also { ball.colorFilter = it }
+                        glowPaint.alpha = alpha
 
-                    glowDestination.set(
-                        ball.x - ball.radius * 1.5f,
-                        ball.y - ball.radius * 1.5f,
-                        ball.x + ball.radius * 1.5f,
-                        ball.y + ball.radius * 1.5f,
-                    )
-                    canvas.drawBitmap(glowBitmap, null, glowDestination, glowPaint)
+                        glowDestination.set(
+                            ball.x - ball.radius * 1.5f,
+                            ball.y - ball.radius * 1.5f,
+                            ball.x + ball.radius * 1.5f,
+                            ball.y + ball.radius * 1.5f,
+                        )
+                        canvas.drawBitmap(glowBitmap, null, glowDestination, glowPaint)
+                    } else {
+                        ballPaint.color = ball.color
+                        ballPaint.alpha = alpha
+                        canvas.drawCircle(ball.x, ball.y, ball.radius, ballPaint)
+                    }
                 }
             }
 
@@ -390,10 +413,10 @@ class BouncerWallpaperService : WallpaperService() {
                 if (width <= 0 || height <= 0) return
 
                 val currentTime = SystemClock.elapsedRealtime()
-                val touch = simulationState.lastTouch.getAndSet(null)
+                val touch = if (destroyOnTouch) simulationState.lastTouch.getAndSet(null) else null
                 val balls = simulationState.balls
-                val activeBallCount = balls.count { !it.retiring }
-                val excessBallCount = activeBallCount - desiredBallCount
+                val excessBallCount = simulationState.activeBallCount - desiredBallCount
+                val deltaScale = deltaTime * 60f
 
                 if (excessBallCount > 0) {
                     markBallsForRetirement(excessBallCount, currentTime)
@@ -446,8 +469,8 @@ class BouncerWallpaperService : WallpaperService() {
                         height = height,
                     ) * if (ball.retiring) max(ball.alpha, MIN_RETIRE_SCALE) else 1f
                     ball.mass = ball.radius * ball.radius
-                    ball.x += ball.dx * (deltaTime * 60f)
-                    ball.y += ball.dy * (deltaTime * 60f)
+                    ball.x += ball.dx * deltaScale
+                    ball.y += ball.dy * deltaScale
 
                     if (ball.x + ball.radius > width || ball.x - ball.radius < 0f) {
                         ball.dx = -ball.dx
@@ -460,12 +483,11 @@ class BouncerWallpaperService : WallpaperService() {
                     BouncerPhysics.ensureFiniteBall(ball, width, height, allowStopped = false)
                 }
 
-                val currentActiveBallCount = balls.count { !it.retiring }
-                repeat(BouncerPhysics.ballsToSpawn(currentActiveBallCount, desiredBallCount)) {
-                    balls.add(createRandomBall(width, height, currentTime))
+                repeat(BouncerPhysics.ballsToSpawn(simulationState.activeBallCount, desiredBallCount)) {
+                    simulationState.addBall(createRandomBall(width, height, currentTime))
                 }
 
-                if (physicsEnabled) {
+                if (physicsEnabled && simulationState.activeBallCount > 1) {
                     resolveCollisions(width, height)
                 }
             }
@@ -479,40 +501,53 @@ class BouncerWallpaperService : WallpaperService() {
                     val ball = balls[index]
                     if (ball.retiring) continue
 
-                    ball.retiring = true
-                    ball.retireStartTime = now
-                    ball.retireDurationMillis = RETIRE_DURATION_MILLIS
+                    simulationState.markBallRetiring(ball, now)
                     remaining--
                     if (remaining == 0) return
                 }
             }
 
             private fun resolveCollisions(width: Int, height: Int) {
-                grid.values.forEach(MutableList<BallState>::clear)
                 // Partition the surface into bins so each ball only checks nearby neighbors
                 // instead of naively iterating the full population.
                 val balls = simulationState.balls
                 var maxRadius = 0f
+                var activeCount = 0
                 for (ball in balls) {
                     if (ball.retiring) continue
                     if (ball.radius > maxRadius) {
                         maxRadius = ball.radius
                     }
+                    activeCount++
                 }
+                if (activeCount < 2) return
+
                 val cellSize = BouncerPhysics.collisionCellSize(maxRadius)
                 val cols = (width / cellSize).toInt() + 1
                 val rows = (height / cellSize).toInt() + 1
+                val cellCount = cols * rows
+                ensureCollisionCapacity(cellCount, balls.size)
+                Arrays.fill(collisionHeads, 0, cellCount, NO_COLLISION_INDEX)
 
-                for (ball in balls) {
-                    if (ball.retiring) continue
+                var activeIndexCount = 0
+                for (ballIndex in balls.indices) {
+                    if (balls[ballIndex].retiring) continue
+                    activeBallIndices[activeIndexCount++] = ballIndex
+                }
+
+                for (activeIndex in 0 until activeIndexCount) {
+                    val ballIndex = activeBallIndices[activeIndex]
+                    val ball = balls[ballIndex]
                     val gridX = (ball.x / cellSize).toInt().coerceIn(0, cols - 1)
                     val gridY = (ball.y / cellSize).toInt().coerceIn(0, rows - 1)
                     val key = gridX + gridY * cols
-                    grid.getOrPut(key) { mutableListOf() }.add(ball)
+                    collisionNext[ballIndex] = collisionHeads[key]
+                    collisionHeads[key] = ballIndex
                 }
 
-                for (ball in balls) {
-                    if (ball.retiring) continue
+                for (activeIndex in 0 until activeIndexCount) {
+                    val ballIndex = activeBallIndices[activeIndex]
+                    val ball = balls[ballIndex]
                     val gridX = (ball.x / cellSize).toInt().coerceIn(0, cols - 1)
                     val gridY = (ball.y / cellSize).toInt().coerceIn(0, rows - 1)
 
@@ -522,8 +557,10 @@ class BouncerWallpaperService : WallpaperService() {
                             val neighborY = gridY + offsetY
                             if (neighborX !in 0 until cols || neighborY !in 0 until rows) continue
                             val key = neighborX + neighborY * cols
-                            grid[key]?.forEach { other ->
-                                if (ball.id < other.id) {
+                            var otherIndex = collisionHeads[key]
+                            while (otherIndex != NO_COLLISION_INDEX) {
+                                if (ballIndex < otherIndex) {
+                                    val other = balls[otherIndex]
                                     BouncerPhysics.separateAndResolveCollision(
                                         first = ball,
                                         second = other,
@@ -532,9 +569,22 @@ class BouncerWallpaperService : WallpaperService() {
                                         allowStopped = false,
                                     )
                                 }
+                                otherIndex = collisionNext[otherIndex]
                             }
                         }
                     }
+                }
+            }
+
+            private fun ensureCollisionCapacity(cellCount: Int, ballCapacity: Int) {
+                if (collisionHeads.size < cellCount) {
+                    collisionHeads = IntArray(cellCount)
+                }
+                if (collisionNext.size < ballCapacity) {
+                    collisionNext = IntArray(ballCapacity)
+                }
+                if (activeBallIndices.size < ballCapacity) {
+                    activeBallIndices = IntArray(ballCapacity)
                 }
             }
 
@@ -577,16 +627,44 @@ class BouncerWallpaperService : WallpaperService() {
         }
 
         private inner class SimulationState {
-            val balls = mutableListOf<BallState>()
+            val balls = ArrayList<BallState>(BouncerPhysics.DEFAULT_BALL_COUNT)
             val lastTouch = AtomicReference<PointF?>(null)
             private val recycledBalls = ArrayDeque<BallState>()
+            var activeBallCount = 0
+                private set
             var nextBallId = 1L
 
             fun clear() {
                 balls.forEach(::recycleBall)
                 balls.clear()
                 lastTouch.set(null)
+                activeBallCount = 0
                 nextBallId = 1L
+            }
+
+            fun addBall(ball: BallState) {
+                balls.add(ball)
+                if (!ball.retiring) {
+                    activeBallCount++
+                }
+            }
+
+            fun prepareCapacity(capacity: Int) {
+                val clampedCapacity = capacity.coerceIn(BouncerPhysics.MIN_BALL_COUNT, MAX_RECYCLED_BALLS)
+                balls.ensureCapacity(clampedCapacity)
+                while (recycledBalls.size < clampedCapacity) {
+                    recycledBalls.addLast(createPooledBall())
+                }
+            }
+
+            fun markBallRetiring(ball: BallState, now: Long) {
+                if (ball.retiring) return
+                ball.retiring = true
+                ball.retireStartTime = now
+                ball.retireDurationMillis = RETIRE_DURATION_MILLIS
+                if (activeBallCount > 0) {
+                    activeBallCount--
+                }
             }
 
             fun obtainBall(): BallState = recycledBalls.removeFirstOrNull() ?: BallState(
@@ -603,11 +681,27 @@ class BouncerWallpaperService : WallpaperService() {
             )
 
             fun recycleBall(ball: BallState) {
+                if (!ball.retiring && activeBallCount > 0) {
+                    activeBallCount--
+                }
                 if (recycledBalls.size >= MAX_RECYCLED_BALLS) return
                 ball.colorFilter = null
                 ball.retiring = false
                 recycledBalls.addLast(ball)
             }
+
+            private fun createPooledBall(): BallState = BallState(
+                x = 0f,
+                y = 0f,
+                dx = 0f,
+                dy = 0f,
+                radius = BouncerPhysics.MIN_RADIUS,
+                initialRadius = BouncerPhysics.MIN_RADIUS,
+                color = Color.WHITE,
+                startTime = 0L,
+                expiryTime = 0L,
+                sizeVariability = 1f,
+            )
         }
     }
 
@@ -620,5 +714,6 @@ class BouncerWallpaperService : WallpaperService() {
         const val RETIRE_DURATION_MILLIS = 220L
         const val MIN_RETIRE_SCALE = 0.35f
         const val MAX_RECYCLED_BALLS = 320
+        const val NO_COLLISION_INDEX = -1
     }
 }
