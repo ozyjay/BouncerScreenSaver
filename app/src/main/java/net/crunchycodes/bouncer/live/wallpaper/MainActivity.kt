@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -258,6 +259,20 @@ class MainActivity : ComponentActivity() {
                                 text = stringResource(R.string.customize),
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 2.sp,
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        TextButton(
+                            onClick = { finishAffinity() },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.exit_app),
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontWeight = FontWeight.Medium,
+                                letterSpacing = 1.sp,
                             )
                         }
                     }
