@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import net.crunchycodes.bouncer.live.wallpaper.ui.theme.BouncerScreenSaverTheme
 import kotlin.math.roundToInt
@@ -60,19 +61,60 @@ class SettingsActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun SettingsScreen(settings: SettingsManager) {
+        SettingsScreenContent(
+            initialState = SettingsScreenState(
+                ballCount = settings.ballCount.toFloat(),
+                ballSpeed = settings.ballSpeed,
+                selectedPalette = settings.palette,
+                physicsEnabled = settings.physicsEnabled,
+                sizeBehavior = settings.sizeBehavior,
+                lifespanBase = settings.lifespanBase,
+                destroyOnTouch = settings.destroyOnTouch,
+                deviceMaxBallCount = settings.effectiveMaxBallCount(),
+                deviceMaxBallSpeed = settings.effectiveMaxBallSpeed(),
+                detectedRefreshRateHz = settings.calibrationRefreshRateHz.roundToInt(),
+            ),
+            onBack = { finish() },
+            onDone = { finishAffinity() },
+            onPhysicsEnabledChange = { settings.physicsEnabled = it },
+            onDestroyOnTouchChange = { settings.destroyOnTouch = it },
+            onBallCountChangeFinished = { settings.ballCount = it.toInt() },
+            onReRunCalibration = {
+                settings.resetCalibration()
+                startActivity(android.content.Intent(this@SettingsActivity, MainActivity::class.java))
+                finish()
+            },
+            onBallSpeedChangeFinished = { settings.ballSpeed = it },
+            onSizeBehaviorChangeFinished = { settings.sizeBehavior = it },
+            onLifespanBaseChangeFinished = { settings.lifespanBase = it },
+            onPaletteSelected = { settings.palette = it },
+        )
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun SettingsScreenContent(
+        initialState: SettingsScreenState,
+        onBack: () -> Unit,
+        onDone: () -> Unit,
+        onPhysicsEnabledChange: (Boolean) -> Unit,
+        onDestroyOnTouchChange: (Boolean) -> Unit,
+        onBallCountChangeFinished: (Float) -> Unit,
+        onReRunCalibration: () -> Unit,
+        onBallSpeedChangeFinished: (Float) -> Unit,
+        onSizeBehaviorChangeFinished: (Float) -> Unit,
+        onLifespanBaseChangeFinished: (Float) -> Unit,
+        onPaletteSelected: (ColorPalette) -> Unit,
+    ) {
         // Keep slider state local while dragging so the UI stays responsive; persist only
         // when the gesture completes to avoid writing preferences on every frame.
-        var ballCount by remember { mutableFloatStateOf(settings.ballCount.toFloat()) }
-        var ballSpeed by remember { mutableFloatStateOf(settings.ballSpeed) }
-        var selectedPalette by remember { mutableStateOf(settings.palette) }
-        var physicsEnabled by remember { mutableStateOf(settings.physicsEnabled) }
-        var sizeBehavior by remember { mutableFloatStateOf(settings.sizeBehavior) }
-        var lifespanBase by remember { mutableFloatStateOf(settings.lifespanBase) }
-        var destroyOnTouch by remember { mutableStateOf(settings.destroyOnTouch) }
-        val deviceMaxBallCount = settings.effectiveMaxBallCount()
-        val deviceMaxBallSpeed = settings.effectiveMaxBallSpeed()
-        val detectedRefreshRateHz = settings.calibrationRefreshRateHz.roundToInt()
-
+        var ballCount by remember { mutableFloatStateOf(initialState.ballCount) }
+        var ballSpeed by remember { mutableFloatStateOf(initialState.ballSpeed) }
+        var selectedPalette by remember { mutableStateOf(initialState.selectedPalette) }
+        var physicsEnabled by remember { mutableStateOf(initialState.physicsEnabled) }
+        var sizeBehavior by remember { mutableFloatStateOf(initialState.sizeBehavior) }
+        var lifespanBase by remember { mutableFloatStateOf(initialState.lifespanBase) }
+        var destroyOnTouch by remember { mutableStateOf(initialState.destroyOnTouch) }
         val scrollState = rememberScrollState()
 
         Scaffold(
@@ -80,11 +122,16 @@ class SettingsActivity : ComponentActivity() {
                 TopAppBar(
                     title = { Text(stringResource(R.string.settings_title)) },
                     navigationIcon = {
-                        IconButton(onClick = { finish() }) {
+                        IconButton(onClick = onBack) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(R.string.back),
                             )
+                        }
+                    },
+                    actions = {
+                        TextButton(onClick = onDone) {
+                            Text(text = stringResource(R.string.done))
                         }
                     },
                 )
@@ -107,7 +154,7 @@ class SettingsActivity : ComponentActivity() {
                         checked = physicsEnabled,
                         onCheckedChange = {
                             physicsEnabled = it
-                            settings.physicsEnabled = it
+                            onPhysicsEnabledChange(it)
                         },
                     )
                 }
@@ -124,7 +171,7 @@ class SettingsActivity : ComponentActivity() {
                         checked = destroyOnTouch,
                         onCheckedChange = {
                             destroyOnTouch = it
-                            settings.destroyOnTouch = it
+                            onDestroyOnTouchChange(it)
                         },
                     )
                 }
@@ -134,8 +181,8 @@ class SettingsActivity : ComponentActivity() {
                 Text(
                     text = stringResource(
                         R.string.calibrated_device_cap,
-                        deviceMaxBallCount,
-                        detectedRefreshRateHz,
+                        initialState.deviceMaxBallCount,
+                        initialState.detectedRefreshRateHz,
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -146,34 +193,21 @@ class SettingsActivity : ComponentActivity() {
                 Slider(
                     value = ballCount,
                     onValueChange = { ballCount = it },
-                    onValueChangeFinished = { settings.ballCount = ballCount.toInt() },
-                    valueRange = BouncerPhysics.MIN_BALL_COUNT.toFloat()..deviceMaxBallCount.toFloat(),
+                    onValueChangeFinished = { onBallCountChangeFinished(ballCount) },
+                    valueRange = BouncerPhysics.MIN_BALL_COUNT.toFloat()..initialState.deviceMaxBallCount.toFloat(),
                 )
                 Text(
-                    text = stringResource(R.string.high_ball_count_note, deviceMaxBallCount),
+                    text = stringResource(R.string.high_ball_count_note, initialState.deviceMaxBallCount),
                     style = MaterialTheme.typography.bodySmall,
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
-                    onClick = {
-                        settings.resetCalibration()
-                        startActivity(android.content.Intent(this@SettingsActivity, MainActivity::class.java))
-                        finish()
-                    },
+                    onClick = onReRunCalibration,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(text = stringResource(R.string.rerun_calibration))
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                TextButton(
-                    onClick = { finishAffinity() },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(text = stringResource(R.string.exit_app))
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -182,11 +216,11 @@ class SettingsActivity : ComponentActivity() {
                 Slider(
                     value = ballSpeed,
                     onValueChange = { ballSpeed = it },
-                    onValueChangeFinished = { settings.ballSpeed = ballSpeed },
-                    valueRange = BouncerPhysics.MIN_BALL_SPEED..deviceMaxBallSpeed,
+                    onValueChangeFinished = { onBallSpeedChangeFinished(ballSpeed) },
+                    valueRange = BouncerPhysics.MIN_BALL_SPEED..initialState.deviceMaxBallSpeed,
                 )
                 Text(
-                    text = stringResource(R.string.ball_speed_cap_note, deviceMaxBallSpeed),
+                    text = stringResource(R.string.ball_speed_cap_note, initialState.deviceMaxBallSpeed),
                     style = MaterialTheme.typography.bodySmall,
                 )
 
@@ -197,11 +231,11 @@ class SettingsActivity : ComponentActivity() {
                     sizeBehavior > 0.1f -> stringResource(R.string.size_behavior_grow, sizeBehavior)
                     else -> stringResource(R.string.size_behavior_static)
                 }
-                Text(text = stringResource(R.string.size_behavior_label, sizeText))
+                Text(text = "${stringResource(R.string.size_behavior_label)}: $sizeText")
                 Slider(
                     value = sizeBehavior,
                     onValueChange = { sizeBehavior = it },
-                    onValueChangeFinished = { settings.sizeBehavior = sizeBehavior },
+                    onValueChangeFinished = { onSizeBehaviorChangeFinished(sizeBehavior) },
                     valueRange = BouncerPhysics.MIN_SIZE_BEHAVIOR..BouncerPhysics.MAX_SIZE_BEHAVIOR,
                 )
 
@@ -211,7 +245,7 @@ class SettingsActivity : ComponentActivity() {
                 Slider(
                     value = lifespanBase,
                     onValueChange = { lifespanBase = it },
-                    onValueChangeFinished = { settings.lifespanBase = lifespanBase },
+                    onValueChangeFinished = { onLifespanBaseChangeFinished(lifespanBase) },
                     valueRange = BouncerPhysics.MIN_LIFESPAN_SECONDS..BouncerPhysics.MAX_LIFESPAN_SECONDS,
                 )
 
@@ -227,7 +261,7 @@ class SettingsActivity : ComponentActivity() {
                             selected = selectedPalette == palette,
                             onClick = {
                                 selectedPalette = palette
-                                settings.palette = palette
+                                onPaletteSelected(palette)
                             },
                             label = { Text(stringResource(palette.labelRes)) },
                         )
@@ -236,4 +270,53 @@ class SettingsActivity : ComponentActivity() {
             }
         }
     }
+
+    @Preview(showBackground = true)
+    @Composable
+    private fun PreviewSettingsScreen() {
+        BouncerScreenSaverTheme {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                SettingsScreenContent(
+                    initialState = SettingsScreenState(
+                        ballCount = 36f,
+                        ballSpeed = 4.5f,
+                        selectedPalette = ColorPalette.NEON,
+                        physicsEnabled = true,
+                        sizeBehavior = -0.5f,
+                        lifespanBase = 15f,
+                        destroyOnTouch = false,
+                        deviceMaxBallCount = 64,
+                        deviceMaxBallSpeed = 6f,
+                        detectedRefreshRateHz = 60,
+                    ),
+                    onBack = {},
+                    onDone = {},
+                    onPhysicsEnabledChange = {},
+                    onDestroyOnTouchChange = {},
+                    onBallCountChangeFinished = {},
+                    onReRunCalibration = {},
+                    onBallSpeedChangeFinished = {},
+                    onSizeBehaviorChangeFinished = {},
+                    onLifespanBaseChangeFinished = {},
+                    onPaletteSelected = {},
+                )
+            }
+        }
+    }
+
+    private data class SettingsScreenState(
+        val ballCount: Float,
+        val ballSpeed: Float,
+        val selectedPalette: ColorPalette,
+        val physicsEnabled: Boolean,
+        val sizeBehavior: Float,
+        val lifespanBase: Float,
+        val destroyOnTouch: Boolean,
+        val deviceMaxBallCount: Int,
+        val deviceMaxBallSpeed: Float,
+        val detectedRefreshRateHz: Int,
+    )
 }

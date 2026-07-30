@@ -7,12 +7,13 @@
     <string name="open_settings">Open settings</string>
     <string name="settings_title">Bouncer Settings</string>
     <string name="back">Back</string>
+    <string name="done">Done</string>
     <string name="solid_body_physics">Solid Body Physics</string>
     <string name="destroy_on_touch">Destroy on Touch</string>
     <string name="ball_count_label">Ball Count: %1$d</string>
     <string name="ball_speed_label">Base Speed: %1$.1f</string>
     <string name="ball_speed_cap_note">This device is capped at a speed of %1$.1f for stability and screen fit.</string>
-    <string name="size_behavior_label">Size Behavior: %1$s</string>
+    <string name="size_behavior_label">Size Behavior</string>
     <string name="size_behavior_shrink">Shrink (Speed: %1$.1f)</string>
     <string name="size_behavior_grow">Grow (Speed: %1$.1f)</string>
     <string name="size_behavior_static">Static Size</string>

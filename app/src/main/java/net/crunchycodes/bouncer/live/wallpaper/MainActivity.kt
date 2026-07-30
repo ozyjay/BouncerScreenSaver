@@ -11,6 +11,7 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -472,9 +473,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isBouncerWallpaperApplied(context: Context): Boolean {
-        val currentWallpaper = WallpaperManager.getInstance(context).wallpaperInfo ?: return false
-        return currentWallpaper.packageName == context.packageName &&
-            currentWallpaper.serviceName == ComponentName(context, BouncerWallpaperService::class.java).className
+        return try {
+            val currentWallpaper = WallpaperManager.getInstance(context).wallpaperInfo ?: return false
+            currentWallpaper.packageName == context.packageName &&
+                currentWallpaper.serviceName == ComponentName(context, BouncerWallpaperService::class.java).className
+        } catch (error: AssertionError) {
+            Log.d("MainActivity", "Wallpaper service unavailable in preview", error)
+            false
+        } catch (error: UnsupportedOperationException) {
+            Log.d("MainActivity", "Wallpaper service unsupported in current context", error)
+            false
+        }
     }
 
     private fun createUiBall(
