@@ -12,7 +12,19 @@ internal data class LauncherBall(
 )
 
 internal object LauncherSimulation {
-    const val BALL_COUNT = 15
+    const val DEFAULT_DASHBOARD_BALL_COUNT = 18
+    const val MAX_DASHBOARD_BALL_COUNT = 48
+    const val MAX_SPAWN_BATCH = 8
+    const val FRAME_INTERVAL_NANOS = 33_000_000L
+    const val GLOW_RENDER_THRESHOLD = 36
+
+    fun clampDashboardBallCount(value: Int): Int =
+        value.coerceIn(BouncerPhysics.MIN_BALL_COUNT, MAX_DASHBOARD_BALL_COUNT)
+
+    fun ballsToSpawn(currentCount: Int, targetCount: Int): Int =
+        (clampDashboardBallCount(targetCount) - currentCount.coerceAtLeast(0))
+            .coerceAtLeast(0)
+            .coerceAtMost(MAX_SPAWN_BATCH)
 
     fun update(balls: List<LauncherBall>, width: Float, height: Float, deltaSeconds: Float) {
         if (width <= 0f || height <= 0f) return

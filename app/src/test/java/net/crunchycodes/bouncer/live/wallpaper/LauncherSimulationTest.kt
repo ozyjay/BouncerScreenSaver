@@ -6,6 +6,27 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherSimulationTest {
+    @Test
+    fun clampDashboardBallCountUsesLauncherSpecificCap() {
+        assertEquals(BouncerPhysics.MIN_BALL_COUNT, LauncherSimulation.clampDashboardBallCount(0))
+        assertEquals(
+            LauncherSimulation.MAX_DASHBOARD_BALL_COUNT,
+            LauncherSimulation.clampDashboardBallCount(BouncerPhysics.MAX_BALL_COUNT),
+        )
+    }
+
+    @Test
+    fun ballsToSpawnAddsDashboardBallsInBatches() {
+        assertEquals(
+            LauncherSimulation.MAX_SPAWN_BATCH,
+            LauncherSimulation.ballsToSpawn(
+                currentCount = 0,
+                targetCount = LauncherSimulation.MAX_DASHBOARD_BALL_COUNT,
+            ),
+        )
+        assertEquals(0, LauncherSimulation.ballsToSpawn(currentCount = 48, targetCount = 48))
+    }
+
     // The dashboard background deliberately stays simple, but its timing still needs coverage.
     @Test
     fun updateUsesElapsedTimeAndKeepsBallsInBounds() {

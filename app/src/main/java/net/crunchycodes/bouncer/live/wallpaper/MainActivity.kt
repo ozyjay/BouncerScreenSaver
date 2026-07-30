@@ -238,6 +238,7 @@ class MainActivity : ComponentActivity() {
         val glowBitmap = remember { createGlowBitmap() }
         val glowRect = remember { RectF() }
         val glowPaint = remember { AndroidPaint(AndroidPaint.FILTER_BITMAP_FLAG) }
+        val ballPaint = remember { AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG) }
         val colorFilters = remember { mutableMapOf<Int, PorterDuffColorFilter>() }
         var isRunning by remember {
             mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -270,18 +271,25 @@ class MainActivity : ComponentActivity() {
             val height = size.height
 
             drawIntoCanvas { canvas ->
+                val useGlow = balls.size <= LauncherSimulation.GLOW_RENDER_THRESHOLD
                 for (ball in balls) {
-                    glowPaint.colorFilter = colorFilters.getOrPut(ball.color.toArgb()) {
-                        PorterDuffColorFilter(ball.color.toArgb(), PorterDuff.Mode.SRC_IN)
+                    if (useGlow) {
+                        glowPaint.colorFilter = colorFilters.getOrPut(ball.color.toArgb()) {
+                            PorterDuffColorFilter(ball.color.toArgb(), PorterDuff.Mode.SRC_IN)
+                        }
+                        glowPaint.alpha = 160
+                        glowRect.set(
+                            ball.x - ball.radius * 1.6f,
+                            ball.y - ball.radius * 1.6f,
+                            ball.x + ball.radius * 1.6f,
+                            ball.y + ball.radius * 1.6f,
+                        )
+                        canvas.nativeCanvas.drawBitmap(glowBitmap, null, glowRect, glowPaint)
+                    } else {
+                        ballPaint.color = ball.color.toArgb()
+                        ballPaint.alpha = 112
+                        canvas.nativeCanvas.drawCircle(ball.x, ball.y, ball.radius, ballPaint)
                     }
-                    glowPaint.alpha = 160
-                    glowRect.set(
-                        ball.x - ball.radius * 1.6f,
-                        ball.y - ball.radius * 1.6f,
-                        ball.x + ball.radius * 1.6f,
-                        ball.y + ball.radius * 1.6f,
-                    )
-                    canvas.nativeCanvas.drawBitmap(glowBitmap, null, glowRect, glowPaint)
                 }
             }
         }
@@ -289,30 +297,37 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(isRunning, canvasSize, simulationSettings) {
             if (!isRunning || canvasSize == Size.Zero) return@LaunchedEffect
 
-            // Rebuild the lightweight dashboard population whenever the relevant wallpaper
-            // settings change so the landing page reflects the current customization.
-            balls.clear()
-            repeat(simulationSettings.ballCount) {
-                balls += createUiBall(canvasSize.width, canvasSize.height, simulationSettings)
+            while (balls.size > simulationSettings.ballCount) {
+                balls.removeAt(balls.lastIndex)
             }
 
             var previousFrameNanos = 0L
+            var lastUpdateNanos = 0L
             while (isActive && isRunning) {
-                // Drive the background from frame time so motion stays consistent across
-                // refresh rates and pauses cleanly when the activity stops.
                 withFrameNanos { frameTimeNanos ->
+                    if (lastUpdateNanos != 0L &&
+                        frameTimeNanos - lastUpdateNanos < LauncherSimulation.FRAME_INTERVAL_NANOS
+                    ) {
+                        return@withFrameNanos
+                    }
                     if (previousFrameNanos == 0L) {
                         previousFrameNanos = frameTimeNanos
+                        lastUpdateNanos = frameTimeNanos
                     }
                     val deltaSeconds = ((frameTimeNanos - previousFrameNanos) / 1_000_000_000f)
                         .coerceIn(0f, 0.05f)
                     previousFrameNanos = frameTimeNanos
+
+                    repeat(LauncherSimulation.ballsToSpawn(balls.size, simulationSettings.ballCount)) {
+                        balls += createUiBall(canvasSize.width, canvasSize.height, simulationSettings)
+                    }
                     LauncherSimulation.update(
                         balls = balls,
                         width = canvasSize.width,
                         height = canvasSize.height,
                         deltaSeconds = deltaSeconds,
                     )
+                    lastUpdateNanos = frameTimeNanos
                     frameTick++
                 }
             }
@@ -386,7 +401,7 @@ class MainActivity : ComponentActivity() {
 
     private fun SettingsManager.toDashboardSimulationSettings(): DashboardSimulationSettings =
         DashboardSimulationSettings(
-            ballCount = ballCount,
+            ballCount = LauncherSimulation.clampDashboardBallCount(ballCount),
             ballSpeed = ballSpeed,
             palette = palette,
         )
