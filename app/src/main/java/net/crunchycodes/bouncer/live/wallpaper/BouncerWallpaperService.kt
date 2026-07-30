@@ -10,9 +10,11 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
+import android.hardware.display.DisplayManager
 import android.os.SystemClock
 import android.service.wallpaper.WallpaperService
 import android.util.Log
+import android.view.Display
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import java.util.concurrent.atomic.AtomicBoolean
@@ -290,6 +292,12 @@ class BouncerWallpaperService : WallpaperService() {
 
             override fun run() {
                 var lastFrameNanos = SystemClock.elapsedRealtimeNanos()
+                val targetRefreshRateHz = resolveTargetRefreshRateHz()
+                val targetFrameIntervalNanos = DevicePerformance.frameBudgetNanos(targetRefreshRateHz)
+                val runtimeBallController = RuntimeBallCountController(
+                    configuredBallCount = targetBallCount,
+                    deviceMaxBallCount = settings.effectiveMaxBallCount(),
+                )
                 try {
                     while (!stopRequested.get() && !isInterrupted) {
                         val frameStartNanos = SystemClock.elapsedRealtimeNanos()
@@ -297,6 +305,7 @@ class BouncerWallpaperService : WallpaperService() {
                             .toFloat()
                             .coerceIn(0f, MAX_DELTA_SECONDS)
                         lastFrameNanos = frameStartNanos
+                        runtimeBallController.updateConfiguredBallCount(targetBallCount)
 
                         var canvas: Canvas? = null
                         try {
@@ -304,7 +313,12 @@ class BouncerWallpaperService : WallpaperService() {
                             if (canvas != null) {
                                 // Physics and drawing stay on the same thread so ball state
                                 // is never read mid-update by another renderer.
-                                updateState(canvas.width, canvas.height, deltaTime)
+                                updateState(
+                                    width = canvas.width,
+                                    height = canvas.height,
+                                    deltaTime = deltaTime,
+                                    desiredBallCount = runtimeBallController.activeBallCount(),
+                                )
                                 drawFrame(canvas)
                             }
                         } catch (error: Exception) {
@@ -323,10 +337,14 @@ class BouncerWallpaperService : WallpaperService() {
                             }
                         }
 
-                        val elapsedMillis =
-                            (SystemClock.elapsedRealtimeNanos() - frameStartNanos) / NANOS_PER_MILLISECOND
-                        if (elapsedMillis < FRAME_INTERVAL_MILLIS) {
-                            sleep(FRAME_INTERVAL_MILLIS - elapsedMillis)
+                        val frameDurationNanos = SystemClock.elapsedRealtimeNanos() - frameStartNanos
+                        runtimeBallController.recordFrame(frameDurationNanos, targetFrameIntervalNanos)
+                        val remainingFrameNanos = targetFrameIntervalNanos - frameDurationNanos
+                        if (remainingFrameNanos > 0L) {
+                            sleep(
+                                remainingFrameNanos / NANOS_PER_MILLISECOND,
+                                (remainingFrameNanos % NANOS_PER_MILLISECOND).toInt(),
+                            )
                         }
                     }
                 } catch (_: InterruptedException) {
@@ -367,12 +385,11 @@ class BouncerWallpaperService : WallpaperService() {
                 }
             }
 
-            private fun updateState(width: Int, height: Int, deltaTime: Float) {
+            private fun updateState(width: Int, height: Int, deltaTime: Float, desiredBallCount: Int) {
                 if (width <= 0 || height <= 0) return
 
                 val currentTime = SystemClock.elapsedRealtime()
                 val touch = simulationState.lastTouch.getAndSet(null)
-                val desiredBallCount = targetBallCount
                 val balls = simulationState.balls
 
                 while (balls.size > desiredBallCount) {
@@ -503,6 +520,15 @@ class BouncerWallpaperService : WallpaperService() {
                     BouncerPhysics.ensureFiniteBall(this, width, height, allowStopped = false)
                 }
             }
+
+            private fun resolveTargetRefreshRateHz(): Float {
+                val calibrationRefreshRate = settings.calibrationRefreshRateHz
+                val displayManager = getSystemService(DisplayManager::class.java)
+                val displayRefreshRate = displayManager
+                    ?.getDisplay(Display.DEFAULT_DISPLAY)
+                    ?.refreshRate
+                return DevicePerformance.normalizeRefreshRateHz(displayRefreshRate ?: calibrationRefreshRate)
+            }
         }
 
         private inner class SimulationState {
@@ -520,7 +546,6 @@ class BouncerWallpaperService : WallpaperService() {
 
     private companion object {
         const val TAG = "BouncerWallpaper"
-        const val FRAME_INTERVAL_MILLIS = 16L
         const val RENDER_THREAD_STOP_TIMEOUT_MS = 500L
         const val NANOS_PER_MILLISECOND = 1_000_000L
         const val NANOS_PER_SECOND = 1_000_000_000.0

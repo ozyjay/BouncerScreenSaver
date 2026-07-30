@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import net.crunchycodes.bouncer.live.wallpaper.ui.theme.BouncerScreenSaverTheme
+import kotlin.math.roundToInt
 
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,7 +58,7 @@ class SettingsActivity : ComponentActivity() {
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    fun SettingsScreen(settings: SettingsManager) {
+    private fun SettingsScreen(settings: SettingsManager) {
         // Keep slider state local while dragging so the UI stays responsive; persist only
         // when the gesture completes to avoid writing preferences on every frame.
         var ballCount by remember { mutableFloatStateOf(settings.ballCount.toFloat()) }
@@ -66,6 +68,8 @@ class SettingsActivity : ComponentActivity() {
         var sizeBehavior by remember { mutableFloatStateOf(settings.sizeBehavior) }
         var lifespanBase by remember { mutableFloatStateOf(settings.lifespanBase) }
         var destroyOnTouch by remember { mutableStateOf(settings.destroyOnTouch) }
+        val deviceMaxBallCount = settings.effectiveMaxBallCount()
+        val detectedRefreshRateHz = settings.calibrationRefreshRateHz.roundToInt()
 
         val scrollState = rememberScrollState()
 
@@ -125,17 +129,41 @@ class SettingsActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                Text(
+                    text = stringResource(
+                        R.string.calibrated_device_cap,
+                        deviceMaxBallCount,
+                        detectedRefreshRateHz,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Text(text = stringResource(R.string.ball_count_label, ballCount.toInt()))
                 Slider(
                     value = ballCount,
                     onValueChange = { ballCount = it },
                     onValueChangeFinished = { settings.ballCount = ballCount.toInt() },
-                    valueRange = BouncerPhysics.MIN_BALL_COUNT.toFloat()..BouncerPhysics.MAX_BALL_COUNT.toFloat(),
+                    valueRange = BouncerPhysics.MIN_BALL_COUNT.toFloat()..deviceMaxBallCount.toFloat(),
                 )
                 Text(
-                    text = stringResource(R.string.high_ball_count_note),
+                    text = stringResource(R.string.high_ball_count_note, deviceMaxBallCount),
                     style = MaterialTheme.typography.bodySmall,
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        settings.resetCalibration()
+                        startActivity(android.content.Intent(this@SettingsActivity, MainActivity::class.java))
+                        finish()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(text = stringResource(R.string.rerun_calibration))
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 

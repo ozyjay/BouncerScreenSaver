@@ -20,7 +20,13 @@
     <string name="wallpaper_service_label">Bouncer Wallpaper</string>
     <string name="wallpaper_settings_label">Bouncer Settings</string>
     <string name="wallpaper_description">Bouncer live wallpaper</string>
-    <string name="high_ball_count_note">High ball counts are demanding and may reduce frame stability on some devices.</string>
+    <string name="high_ball_count_note">This device is capped at %1$d balls to protect frame stability.</string>
+    <string name="calibration_title">Optimizing for your device</string>
+    <string name="calibration_subtitle">Testing smooth ball counts and frame pacing. This only runs once.</string>
+    <string name="calibration_status">Testing %1$d balls at %2$dHz</string>
+    <string name="calibration_progress">Progress: %1$d%%</string>
+    <string name="calibrated_device_cap">Device cap: %1$d balls at %2$dHz</string>
+    <string name="rerun_calibration">Re-run device calibration</string>
     <string name="palette_random">Random</string>
     <string name="palette_neon">Neon</string>
     <string name="palette_ocean">Ocean</string>

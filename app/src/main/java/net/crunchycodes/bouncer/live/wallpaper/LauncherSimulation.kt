@@ -15,14 +15,16 @@ internal object LauncherSimulation {
     const val DEFAULT_DASHBOARD_BALL_COUNT = 18
     const val MAX_DASHBOARD_BALL_COUNT = 48
     const val MAX_SPAWN_BATCH = 8
-    const val FRAME_INTERVAL_NANOS = 33_000_000L
     const val GLOW_RENDER_THRESHOLD = 36
 
-    fun clampDashboardBallCount(value: Int): Int =
-        value.coerceIn(BouncerPhysics.MIN_BALL_COUNT, MAX_DASHBOARD_BALL_COUNT)
+    fun clampDashboardBallCount(value: Int, maxBallCount: Int = MAX_DASHBOARD_BALL_COUNT): Int =
+        value.coerceIn(
+            BouncerPhysics.MIN_BALL_COUNT,
+            maxBallCount.coerceIn(BouncerPhysics.MIN_BALL_COUNT, BouncerPhysics.MAX_BALL_COUNT),
+        )
 
-    fun ballsToSpawn(currentCount: Int, targetCount: Int): Int =
-        (clampDashboardBallCount(targetCount) - currentCount.coerceAtLeast(0))
+    fun ballsToSpawn(currentCount: Int, targetCount: Int, maxBallCount: Int = MAX_DASHBOARD_BALL_COUNT): Int =
+        (clampDashboardBallCount(targetCount, maxBallCount) - currentCount.coerceAtLeast(0))
             .coerceAtLeast(0)
             .coerceAtMost(MAX_SPAWN_BATCH)
 
