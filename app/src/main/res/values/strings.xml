@@ -2,6 +2,10 @@
     <string name="app_name">Bouncer</string>
     <string name="dashboard_title">BOUNCER</string>
     <string name="dashboard_subtitle">Live wallpaper with bouncing balls</string>
+    <string name="wallpaper_active_title">Wallpaper Active</string>
+    <string name="wallpaper_active_body">Bouncer is currently set as your live wallpaper.</string>
+    <string name="wallpaper_inactive_title">Wallpaper Not Active</string>
+    <string name="wallpaper_inactive_body">Bouncer is not currently active. Apply it to use the live wallpaper.</string>
     <string name="set_wallpaper">Apply Wallpaper</string>
     <string name="customize">Customize</string>
     <string name="open_settings">Open settings</string>
@@ -22,12 +26,13 @@
     <string name="wallpaper_service_label">Bouncer Wallpaper</string>
     <string name="wallpaper_settings_label">Bouncer Settings</string>
     <string name="wallpaper_description">Bouncer live wallpaper</string>
-    <string name="high_ball_count_note">This device is capped at %1$d balls to protect frame stability.</string>
+    <string name="high_ball_count_note">Device calibration capped this phone at %1$d balls to protect frame stability.</string>
     <string name="calibration_title">Optimizing for your device</string>
     <string name="calibration_subtitle">Testing smooth ball counts and frame pacing. This only runs once.</string>
     <string name="calibration_status">Testing %1$d balls at %2$dHz</string>
     <string name="calibration_progress">Progress: %1$d%%</string>
-    <string name="calibrated_device_cap">Device cap: %1$d balls at %2$dHz</string>
+    <string name="calibrated_device_cap">Device calibration: %1$d max balls at %2$dHz</string>
+    <string name="ball_count_calibration_note">Ball count is limited by your device calibration and can be re-tested at any time.</string>
     <string name="rerun_calibration">Re-run device calibration</string>
     <string name="exit_app">Exit App</string>
     <string name="palette_random">Random</string>

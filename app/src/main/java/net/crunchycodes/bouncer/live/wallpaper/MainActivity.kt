@@ -203,6 +203,10 @@ class MainActivity : ComponentActivity() {
                     if (calibrationActive) {
                         CalibrationPanel(calibrationController)
                     } else {
+                        WallpaperStatusPanel(isWallpaperActive = !showApplyWallpaper)
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
                         if (showApplyWallpaper) {
                             Button(
                                 onClick = {
@@ -260,6 +264,50 @@ class MainActivity : ComponentActivity() {
 
                     Spacer(modifier = Modifier.height(32.dp))
                 }
+            }
+        }
+    }
+
+    @Composable
+    private fun WallpaperStatusPanel(isWallpaperActive: Boolean) {
+        val statusColor = if (isWallpaperActive) {
+            Color(0xFF7EDC91)
+        } else {
+            Color(0xFFFFB454)
+        }
+        val titleRes = if (isWallpaperActive) {
+            R.string.wallpaper_active_title
+        } else {
+            R.string.wallpaper_inactive_title
+        }
+        val bodyRes = if (isWallpaperActive) {
+            R.string.wallpaper_active_body
+        } else {
+            R.string.wallpaper_inactive_body
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color.Black.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(20.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+            ) {
+                Text(
+                    text = stringResource(titleRes),
+                    color = statusColor,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = stringResource(bodyRes),
+                    color = Color.White.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
     }

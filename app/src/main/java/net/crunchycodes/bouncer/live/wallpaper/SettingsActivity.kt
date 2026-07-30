@@ -197,6 +197,11 @@ class SettingsActivity : ComponentActivity() {
                     valueRange = BouncerPhysics.MIN_BALL_COUNT.toFloat()..initialState.deviceMaxBallCount.toFloat(),
                 )
                 Text(
+                    text = stringResource(R.string.ball_count_calibration_note),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
                     text = stringResource(R.string.high_ball_count_note, initialState.deviceMaxBallCount),
                     style = MaterialTheme.typography.bodySmall,
                 )
