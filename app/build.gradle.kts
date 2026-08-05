@@ -34,7 +34,7 @@ android {
 
     defaultConfig {
         applicationId = "net.crunchycodes.bouncer.live.wallpaper"
-        minSdk = 24
+        minSdk = 23
         targetSdk = 36
         versionCode = autoVersionCode
         versionName = autoVersionName
