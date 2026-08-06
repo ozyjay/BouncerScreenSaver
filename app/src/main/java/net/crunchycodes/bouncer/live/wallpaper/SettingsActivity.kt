@@ -7,12 +7,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -116,6 +121,9 @@ class SettingsActivity : ComponentActivity() {
         var lifespanBase by remember { mutableFloatStateOf(initialState.lifespanBase) }
         var destroyOnTouch by remember { mutableStateOf(initialState.destroyOnTouch) }
         val scrollState = rememberScrollState()
+        val sliderModifier = Modifier
+            .windowInsetsPadding(WindowInsets.systemGestures.only(WindowInsetsSides.Horizontal))
+            .fillMaxWidth()
 
         Scaffold(
             topBar = {
@@ -195,6 +203,7 @@ class SettingsActivity : ComponentActivity() {
                     onValueChange = { ballCount = it },
                     onValueChangeFinished = { onBallCountChangeFinished(ballCount) },
                     valueRange = BouncerPhysics.MIN_BALL_COUNT.toFloat()..initialState.deviceMaxBallCount.toFloat(),
+                    modifier = sliderModifier,
                 )
                 Text(
                     text = stringResource(R.string.ball_count_calibration_note),
@@ -223,6 +232,7 @@ class SettingsActivity : ComponentActivity() {
                     onValueChange = { ballSpeed = it },
                     onValueChangeFinished = { onBallSpeedChangeFinished(ballSpeed) },
                     valueRange = BouncerPhysics.MIN_BALL_SPEED..initialState.deviceMaxBallSpeed,
+                    modifier = sliderModifier,
                 )
                 Text(
                     text = stringResource(R.string.ball_speed_cap_note, initialState.deviceMaxBallSpeed),
@@ -242,6 +252,7 @@ class SettingsActivity : ComponentActivity() {
                     onValueChange = { sizeBehavior = it },
                     onValueChangeFinished = { onSizeBehaviorChangeFinished(sizeBehavior) },
                     valueRange = BouncerPhysics.MIN_SIZE_BEHAVIOR..BouncerPhysics.MAX_SIZE_BEHAVIOR,
+                    modifier = sliderModifier,
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -252,6 +263,7 @@ class SettingsActivity : ComponentActivity() {
                     onValueChange = { lifespanBase = it },
                     onValueChangeFinished = { onLifespanBaseChangeFinished(lifespanBase) },
                     valueRange = BouncerPhysics.MIN_LIFESPAN_SECONDS..BouncerPhysics.MAX_LIFESPAN_SECONDS,
+                    modifier = sliderModifier,
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
