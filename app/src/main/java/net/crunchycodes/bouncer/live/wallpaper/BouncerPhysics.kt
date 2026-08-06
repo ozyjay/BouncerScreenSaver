@@ -27,8 +27,6 @@ internal object BouncerPhysics {
 
     fun clampBallCount(value: Int): Int = value.coerceIn(MIN_BALL_COUNT, MAX_BALL_COUNT)
 
-    fun clampBallSpeed(value: Float): Float = value.coerceIn(MIN_BALL_SPEED, MAX_BALL_SPEED)
-
     fun clampSizeBehavior(value: Float): Float =
         value.coerceIn(MIN_SIZE_BEHAVIOR, MAX_SIZE_BEHAVIOR)
 
@@ -55,6 +53,16 @@ internal object BouncerPhysics {
 
     fun collisionCellSize(maxRadius: Float): Float =
         max(MIN_COLLISION_CELL_SIZE, maxRadius.coerceAtLeast(0f) * 2f)
+
+    fun maxRadiusForPopulation(width: Int, height: Int, populationCount: Int): Float {
+        val surfaceLimit = min(width, height).coerceAtLeast(0) / 2f
+        if (surfaceLimit <= 0f) return 0f
+
+        val population = populationCount.coerceAtLeast(MIN_BALL_COUNT)
+        val areaPerBall = width.coerceAtLeast(0).toFloat() * height.coerceAtLeast(0).toFloat() / population
+        val densityLimit = sqrt(areaPerBall.coerceAtLeast(0f)) * MAX_RADIUS_TO_SPACING_RATIO
+        return densityLimit.coerceIn(min(MIN_RADIUS, surfaceLimit), surfaceLimit)
+    }
 
     fun ballsToSpawn(currentCount: Int, targetCount: Int, maxBatch: Int = MAX_SPAWN_BATCH): Int {
         // Spawn in batches so jumping from a small count to the configured max does not create a single
@@ -183,4 +191,6 @@ internal object BouncerPhysics {
     }
 
     fun speedSquared(dx: Float, dy: Float): Float = dx * dx + dy * dy
+
+    private const val MAX_RADIUS_TO_SPACING_RATIO = 0.55f
 }

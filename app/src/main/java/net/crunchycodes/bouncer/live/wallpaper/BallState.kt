@@ -54,6 +54,15 @@ internal class BallState(
         retireStartTime = 0L
         retireDurationMillis = 0L
     }
+
+    fun shiftTimeline(pausedDurationMillis: Long) {
+        if (pausedDurationMillis <= 0L) return
+        startTime += pausedDurationMillis
+        expiryTime += pausedDurationMillis
+        if (retiring) {
+            retireStartTime += pausedDurationMillis
+        }
+    }
 }
 
 internal interface RandomSource {

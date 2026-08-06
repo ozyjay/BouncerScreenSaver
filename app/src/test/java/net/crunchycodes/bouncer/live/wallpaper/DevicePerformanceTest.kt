@@ -32,7 +32,11 @@ class DevicePerformanceTest {
     @Test
     fun runtimeControllerReducesAndRecoversBallCount() {
         val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
-        val controller = RuntimeBallCountController(configuredBallCount = 100, deviceMaxBallCount = 100)
+        val controller = RuntimeBallCountController(
+            configuredBallCount = 100,
+            deviceMaxBallCount = 100,
+            initialRenderQuality = RenderQuality.Flat,
+        )
 
         repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 2) {
             controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
@@ -47,6 +51,45 @@ class DevicePerformanceTest {
 
         assertTrue(controller.activeBallCount() > reducedBallCount)
         assertTrue(controller.activeBallCount() <= 100)
+    }
+
+    @Test
+    fun runtimeControllerDisablesGlowBeforeRemovingBalls() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(
+            configuredBallCount = 100,
+            deviceMaxBallCount = 100,
+            initialRenderQuality = RenderQuality.Glow,
+        )
+
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 2) {
+            controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
+        }
+
+        assertEquals(RenderQuality.Flat, controller.renderQuality())
+        assertEquals(100, controller.activeBallCount())
+
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 2) {
+            controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
+        }
+
+        assertTrue(controller.activeBallCount() < 100)
+    }
+
+    @Test
+    fun runtimeControllerDoesNotCollapseLargePopulationToOneBall() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(
+            configuredBallCount = 100,
+            deviceMaxBallCount = 100,
+            initialRenderQuality = RenderQuality.Flat,
+        )
+
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 100) {
+            controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
+        }
+
+        assertTrue(controller.activeBallCount() >= 4)
     }
 
     @Test

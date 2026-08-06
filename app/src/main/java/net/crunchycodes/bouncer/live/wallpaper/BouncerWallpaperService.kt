@@ -17,8 +17,10 @@ import android.util.Log
 import android.view.Display
 import android.view.MotionEvent
 import android.view.SurfaceHolder
+import androidx.core.graphics.createBitmap
 import java.util.Arrays
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.PI
@@ -47,6 +49,8 @@ class BouncerWallpaperService : WallpaperService() {
         private val lifecycleController = RenderLifecycleController()
         private val simulationState = SimulationState()
         private val settings = SettingsManager(this@BouncerWallpaperService)
+        private val pendingPausedDurationMillis = AtomicLong(0L)
+        private var hiddenAtElapsedRealtimeMillis: Long? = null
 
         @Volatile
         private var targetBallCount = BouncerPhysics.DEFAULT_BALL_COUNT
@@ -87,10 +91,27 @@ class BouncerWallpaperService : WallpaperService() {
 
         override fun onVisibilityChanged(visible: Boolean) {
             Log.d(TAG, "Visibility changed: visible=$visible")
+            recordSimulationVisibility(visible)
             updateRenderingState(
                 reason = "visibility=$visible",
                 actionProvider = { lifecycleController.onVisibilityChanged(visible) },
             )
+        }
+
+        private fun recordSimulationVisibility(visible: Boolean) {
+            val now = SystemClock.elapsedRealtime()
+            synchronized(lifecycleLock) {
+                if (!visible) {
+                    if (hiddenAtElapsedRealtimeMillis == null) {
+                        hiddenAtElapsedRealtimeMillis = now
+                    }
+                    return
+                }
+
+                val hiddenAt = hiddenAtElapsedRealtimeMillis ?: return
+                pendingPausedDurationMillis.addAndGet((now - hiddenAt).coerceAtLeast(0L))
+                hiddenAtElapsedRealtimeMillis = null
+            }
         }
 
         override fun onTouchEvent(event: MotionEvent) {
@@ -271,7 +292,7 @@ class BouncerWallpaperService : WallpaperService() {
                 override fun nextInt(until: Int): Int = Random.nextInt(until)
             }
 
-            private val glowBitmap: Bitmap = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888)
+            private val glowBitmap: Bitmap = createBitmap(200, 200)
             private val glowPaint = Paint(Paint.FILTER_BITMAP_FLAG)
             private val ballPaint = Paint(Paint.ANTI_ALIAS_FLAG)
             private val glowDestination = RectF()
@@ -306,6 +327,7 @@ class BouncerWallpaperService : WallpaperService() {
                 val runtimeBallController = RuntimeBallCountController(
                     configuredBallCount = targetBallCount,
                     deviceMaxBallCount = deviceMaxBallCount,
+                    initialRenderQuality = DevicePerformance.renderQuality(deviceMaxBallCount),
                 )
                 try {
                     while (!stopRequested.get() && !isInterrupted) {
@@ -330,7 +352,7 @@ class BouncerWallpaperService : WallpaperService() {
                                 )
                                 drawFrame(
                                     canvas = canvas,
-                                    quality = DevicePerformance.renderQuality(deviceMaxBallCount),
+                                    quality = runtimeBallController.renderQuality(),
                                 )
                             }
                         } catch (error: Exception) {
@@ -408,11 +430,17 @@ class BouncerWallpaperService : WallpaperService() {
             private fun updateState(width: Int, height: Int, deltaTime: Float, desiredBallCount: Int) {
                 if (width <= 0 || height <= 0) return
 
+                simulationState.shiftTimestamps(pendingPausedDurationMillis.getAndSet(0L))
                 val currentTime = SystemClock.elapsedRealtime()
                 val touch = if (destroyOnTouch) simulationState.lastTouch.getAndSet(null) else null
                 val balls = simulationState.balls
                 val excessBallCount = simulationState.activeBallCount - desiredBallCount
                 val deltaScale = deltaTime * 60f
+                val radiusLimit = BouncerPhysics.maxRadiusForPopulation(
+                    width = width,
+                    height = height,
+                    populationCount = max(desiredBallCount, simulationState.activeBallCount),
+                )
 
                 if (excessBallCount > 0) {
                     markBallsForRetirement(excessBallCount, currentTime)
@@ -463,7 +491,8 @@ class BouncerWallpaperService : WallpaperService() {
                         lifeRatio = lifeRatio,
                         width = width,
                         height = height,
-                    ) * if (ball.retiring) max(ball.alpha, MIN_RETIRE_SCALE) else 1f
+                    ).coerceAtMost(radiusLimit) *
+                        if (ball.retiring) max(ball.alpha, MIN_RETIRE_SCALE) else 1f
                     ball.mass = ball.radius * ball.radius
                     ball.x += ball.dx * deltaScale
                     ball.y += ball.dy * deltaScale
@@ -650,6 +679,13 @@ class BouncerWallpaperService : WallpaperService() {
                 balls.ensureCapacity(clampedCapacity)
                 while (recycledBalls.size < clampedCapacity) {
                     recycledBalls.addLast(createPooledBall())
+                }
+            }
+
+            fun shiftTimestamps(pausedDurationMillis: Long) {
+                if (pausedDurationMillis <= 0L) return
+                for (ball in balls) {
+                    ball.shiftTimeline(pausedDurationMillis)
                 }
             }
 

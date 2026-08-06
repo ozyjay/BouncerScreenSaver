@@ -121,9 +121,11 @@ internal object DevicePerformance {
 internal class RuntimeBallCountController(
     configuredBallCount: Int,
     private val deviceMaxBallCount: Int,
+    private val initialRenderQuality: RenderQuality = DevicePerformance.renderQuality(deviceMaxBallCount),
 ) {
     private var configuredBallCount = clamp(configuredBallCount)
     private var activeBallCount = this.configuredBallCount
+    private var currentRenderQuality = initialRenderQuality
     private var frameCounter = 0
     private var badFrames = 0
     private var consecutiveBadWindows = 0
@@ -131,7 +133,7 @@ internal class RuntimeBallCountController(
 
     fun activeBallCount(): Int = activeBallCount
 
-    fun configuredBallCount(): Int = configuredBallCount
+    fun renderQuality(): RenderQuality = currentRenderQuality
 
     fun updateConfiguredBallCount(value: Int) {
         configuredBallCount = clamp(value)
@@ -153,8 +155,12 @@ internal class RuntimeBallCountController(
         if (badRatio > 0.08f) {
             consecutiveBadWindows++
             consecutiveGoodWindows = 0
-            if (consecutiveBadWindows >= 2 && activeBallCount > BouncerPhysics.MIN_BALL_COUNT) {
-                activeBallCount = max(BouncerPhysics.MIN_BALL_COUNT, activeBallCount - reductionStep())
+            if (consecutiveBadWindows >= 2) {
+                if (currentRenderQuality == RenderQuality.Glow) {
+                    currentRenderQuality = RenderQuality.Flat
+                } else {
+                    activeBallCount = max(adaptiveMinimumBallCount(), activeBallCount - reductionStep())
+                }
                 consecutiveBadWindows = 0
             }
         } else {
@@ -162,6 +168,13 @@ internal class RuntimeBallCountController(
             consecutiveBadWindows = 0
             if (consecutiveGoodWindows >= 6 && activeBallCount < configuredBallCount) {
                 activeBallCount = min(configuredBallCount, activeBallCount + recoveryStep())
+                consecutiveGoodWindows = 0
+            } else if (
+                consecutiveGoodWindows >= 6 &&
+                activeBallCount == configuredBallCount &&
+                currentRenderQuality != initialRenderQuality
+            ) {
+                currentRenderQuality = initialRenderQuality
                 consecutiveGoodWindows = 0
             }
         }
@@ -175,6 +188,13 @@ internal class RuntimeBallCountController(
 
     private fun recoveryStep(): Int = max(1, (configuredBallCount * 0.05f).roundToInt())
 
+    private fun adaptiveMinimumBallCount(): Int =
+        min(configuredBallCount, max(MIN_ADAPTIVE_BALL_COUNT, (configuredBallCount * 0.15f).roundToInt()))
+
     private fun clamp(value: Int): Int =
         value.coerceIn(BouncerPhysics.MIN_BALL_COUNT, deviceMaxBallCount)
+
+    private companion object {
+        const val MIN_ADAPTIVE_BALL_COUNT = 4
+    }
 }

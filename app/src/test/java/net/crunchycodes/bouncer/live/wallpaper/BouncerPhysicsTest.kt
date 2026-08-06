@@ -42,6 +42,32 @@ class BouncerPhysicsTest {
     }
 
     @Test
+    fun radiusLimitGetsSmallerAsPopulationGetsDenser() {
+        val sparseLimit = BouncerPhysics.maxRadiusForPopulation(
+            width = 1_080,
+            height = 2_400,
+            populationCount = 24,
+        )
+        val denseLimit = BouncerPhysics.maxRadiusForPopulation(
+            width = 1_080,
+            height = 2_400,
+            populationCount = 200,
+        )
+
+        assertTrue(denseLimit < sparseLimit)
+        assertTrue(denseLimit >= BouncerPhysics.MIN_RADIUS)
+    }
+
+    @Test
+    fun radiusLimitNeverExceedsHalfTheShortestSurfaceDimension() {
+        assertEquals(
+            160f,
+            BouncerPhysics.maxRadiusForPopulation(width = 320, height = 480, populationCount = 1),
+            0f,
+        )
+    }
+
+    @Test
     fun populationDeficitIsFilledInBatchesAndConverges() {
         var current = 0
         var frames = 0
@@ -79,6 +105,22 @@ class BouncerPhysicsTest {
         assertEquals(0.5f, BouncerPhysics.alphaForTime(125L), 0.0001f)
         assertEquals(1f, BouncerPhysics.alphaForTime(250L), 0f)
         assertEquals(1f, BouncerPhysics.alphaForTime(500L), 0f)
+    }
+
+    @Test
+    fun hiddenTimeDoesNotConsumeBallLifetimeOrRetirement() {
+        val ball = ball(x = 10f, y = 10f, dx = 1f, dy = 1f, radius = 10f).apply {
+            startTime = 1_000L
+            expiryTime = 11_000L
+            retiring = true
+            retireStartTime = 9_000L
+        }
+
+        ball.shiftTimeline(5_000L)
+
+        assertEquals(6_000L, ball.startTime)
+        assertEquals(16_000L, ball.expiryTime)
+        assertEquals(14_000L, ball.retireStartTime)
     }
 
     @Test
