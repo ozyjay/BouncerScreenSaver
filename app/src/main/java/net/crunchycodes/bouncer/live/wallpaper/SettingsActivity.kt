@@ -1,5 +1,6 @@
 package net.crunchycodes.bouncer.live.wallpaper
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -48,8 +49,11 @@ import net.crunchycodes.bouncer.live.wallpaper.ui.theme.BouncerScreenSaverTheme
 import kotlin.math.roundToInt
 
 class SettingsActivity : ComponentActivity() {
+    private var returnToDashboardOnResume = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        returnToDashboardOnResume = savedInstanceState?.getBoolean(RETURN_TO_DASHBOARD_KEY) == true
         val settings = SettingsManager(this)
         setContent {
             BouncerScreenSaverTheme {
@@ -61,6 +65,33 @@ class SettingsActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!returnToDashboardOnResume) return
+
+        returnToDashboardOnResume = false
+        if (isTaskRoot) {
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                },
+            )
+        }
+        finish()
+    }
+
+    override fun onUserLeaveHint() {
+        // Selecting this task again from Recents should show the dashboard rather than
+        // restoring this secondary screen.
+        returnToDashboardOnResume = true
+        super.onUserLeaveHint()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(RETURN_TO_DASHBOARD_KEY, returnToDashboardOnResume)
+        super.onSaveInstanceState(outState)
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -86,7 +117,7 @@ class SettingsActivity : ComponentActivity() {
             onBallCountChangeFinished = { settings.ballCount = it.toInt() },
             onReRunCalibration = {
                 settings.resetCalibration()
-                startActivity(android.content.Intent(this@SettingsActivity, MainActivity::class.java))
+                startActivity(Intent(this@SettingsActivity, MainActivity::class.java))
                 finish()
             },
             onBallSpeedChangeFinished = { settings.ballSpeed = it },
@@ -336,4 +367,8 @@ class SettingsActivity : ComponentActivity() {
         val deviceMaxBallSpeed: Float,
         val detectedRefreshRateHz: Int,
     )
+
+    private companion object {
+        const val RETURN_TO_DASHBOARD_KEY = "return_to_dashboard"
+    }
 }
