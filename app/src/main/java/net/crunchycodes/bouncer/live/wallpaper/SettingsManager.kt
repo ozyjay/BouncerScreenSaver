@@ -32,6 +32,29 @@ internal class SettingsManager(context: Context) {
         const val KEY_RECOMMENDED_BALL_COUNT = "recommended_ball_count"
         const val KEY_DEVICE_MAX_BALL_SPEED = "device_max_ball_speed"
         const val KEY_RECOMMENDED_BALL_SPEED = "recommended_ball_speed"
+
+        private val USER_SETTING_KEYS = setOf(
+            KEY_BALL_COUNT,
+            KEY_BALL_SPEED,
+            KEY_PALETTE,
+            KEY_BRIGHTNESS,
+            KEY_TRANSPARENCY,
+            KEY_BALL_STYLE,
+            KEY_PERFORMANCE_MODE,
+            KEY_PHYSICS,
+            KEY_AUTO_DISABLE_PHYSICS,
+            KEY_SIZE_BEHAVIOR,
+            KEY_LIFESPAN,
+            KEY_DESTROY_ON_TOUCH,
+            KEY_HAS_COMPLETED_CALIBRATION,
+            KEY_CALIBRATION_REFRESH_RATE,
+            KEY_DEVICE_MAX_BALL_COUNT,
+            KEY_RECOMMENDED_BALL_COUNT,
+            KEY_DEVICE_MAX_BALL_SPEED,
+            KEY_RECOMMENDED_BALL_SPEED,
+        )
+
+        fun isUserSettingKey(key: String?): Boolean = key in USER_SETTING_KEYS
     }
 
     // Clamp again at the storage boundary so invalid persisted values cannot destabilize

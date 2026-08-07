@@ -163,6 +163,34 @@ class DevicePerformanceTest {
     }
 
     @Test
+    fun adjustingSettingsImmediatelyClearsCollisionPauseAndHistory() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+        controller.updateAutomaticPhysicsReduction(true)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+        assertFalse(controller.solidBodyPhysicsAllowed())
+        assertTrue(controller.rollingPerformancePressure() > 0f)
+
+        controller.onSettingsAdjusted()
+
+        assertTrue(controller.solidBodyPhysicsAllowed())
+        assertEquals(0f, controller.rollingPerformancePressure(), 0f)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 4) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+        assertTrue(controller.solidBodyPhysicsAllowed())
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+        assertFalse(controller.solidBodyPhysicsAllowed())
+    }
+
+    @Test
     fun fixedModeHonoursConfiguredCountUnderLoad() {
         val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
         val controller = RuntimeBallCountController(60, 100, RenderQuality.Glow)

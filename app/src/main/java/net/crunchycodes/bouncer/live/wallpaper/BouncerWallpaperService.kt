@@ -74,6 +74,7 @@ class BouncerWallpaperService : WallpaperService() {
         private var performanceMode = PerformanceMode.ADAPTIVE
 
         private val appearanceRevision = AtomicLong(0L)
+        private val performanceSettingsRevision = AtomicLong(0L)
 
         @Volatile
         private var physicsEnabled = true
@@ -99,6 +100,8 @@ class BouncerWallpaperService : WallpaperService() {
 
         private var runtimeBallController: RuntimeBallCountController? = null
         private var runtimeControllerDeviceCap = 0
+        @Volatile
+        private var runtimeControllerSettingsRevision = -1L
 
         override fun onCreate(surfaceHolder: SurfaceHolder?) {
             super.onCreate(surfaceHolder)
@@ -323,6 +326,9 @@ class BouncerWallpaperService : WallpaperService() {
             if (recolorBalls) {
                 appearanceRevision.incrementAndGet()
             }
+            if (SettingsManager.isUserSettingKey(changedKey)) {
+                performanceSettingsRevision.incrementAndGet()
+            }
         }
 
         private inner class RenderThread(
@@ -383,6 +389,11 @@ class BouncerWallpaperService : WallpaperService() {
                         runtimeBallController.updateConfiguredBallCount(targetBallCount)
                         val requestedBallStyle = currentBallStyle
                         val adaptivePerformance = performanceMode == PerformanceMode.ADAPTIVE
+                        val requestedSettingsRevision = performanceSettingsRevision.get()
+                        if (requestedSettingsRevision != runtimeControllerSettingsRevision) {
+                            runtimeBallController.onSettingsAdjusted()
+                            runtimeControllerSettingsRevision = requestedSettingsRevision
+                        }
                         runtimeBallController.updateAdaptivePerformance(adaptivePerformance)
                         runtimeBallController.updatePreferredRenderQuality(
                             value = DevicePerformance.renderQuality(deviceMaxBallCount, requestedBallStyle),
@@ -391,7 +402,7 @@ class BouncerWallpaperService : WallpaperService() {
                             force = requestedBallStyle != appliedBallStyle,
                         )
                         runtimeBallController.updateAutomaticPhysicsReduction(
-                            adaptivePerformance && autoDisablePhysicsOnHeavyLoad,
+                            adaptivePerformance && physicsEnabled && autoDisablePhysicsOnHeavyLoad,
                         )
                         appliedBallStyle = requestedBallStyle
                         refreshBallAppearanceIfNeeded()
@@ -773,6 +784,7 @@ class BouncerWallpaperService : WallpaperService() {
             ).also {
                 runtimeBallController = it
                 runtimeControllerDeviceCap = deviceMaxBallCount
+                runtimeControllerSettingsRevision = -1L
             }
         }
 

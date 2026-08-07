@@ -144,6 +144,7 @@ internal class RuntimeBallCountController(
     private var consecutiveGoodWindows = 0
     private var consecutivePhysicsRecoveryWindows = 0
     private var physicsSuspendedWindowCount = 0
+    private var physicsResumeGraceWindows = 0
     private val performancePressureHistory = ArrayDeque<Float>(PERFORMANCE_HISTORY_WINDOWS)
 
     fun activeBallCount(): Int = activeBallCount
@@ -151,6 +152,12 @@ internal class RuntimeBallCountController(
     fun renderQuality(): RenderQuality = currentRenderQuality
 
     fun solidBodyPhysicsAllowed(): Boolean = !solidBodyPhysicsSuspended
+
+    fun onSettingsAdjusted() {
+        resetPerformanceHistory()
+        solidBodyPhysicsSuspended = false
+        physicsResumeGraceWindows = PHYSICS_SETTINGS_GRACE_WINDOWS
+    }
 
     fun updateAdaptivePerformance(enabled: Boolean) {
         if (adaptivePerformanceEnabled == enabled) return
@@ -168,7 +175,10 @@ internal class RuntimeBallCountController(
         automaticPhysicsReduction = enabled
         consecutivePhysicsRecoveryWindows = 0
         physicsSuspendedWindowCount = 0
-        if (!enabled) solidBodyPhysicsSuspended = false
+        if (!enabled) {
+            solidBodyPhysicsSuspended = false
+            physicsResumeGraceWindows = 0
+        }
     }
 
     fun updateConfiguredBallCount(value: Int) {
@@ -299,6 +309,11 @@ internal class RuntimeBallCountController(
 
     private fun updateAutomaticPhysics(latestPressure: Float, responsivePressure: Float) {
         if (!automaticPhysicsReduction) return
+        if (physicsResumeGraceWindows > 0) {
+            physicsResumeGraceWindows--
+            solidBodyPhysicsSuspended = false
+            return
+        }
 
         if (!solidBodyPhysicsSuspended) {
             val sustainedHeavyLoad =
@@ -405,6 +420,7 @@ internal class RuntimeBallCountController(
         const val PHYSICS_ROLLING_RECOVERY_THRESHOLD = 0.08f
         const val PHYSICS_RECOVERY_WINDOW_COUNT = 4
         const val PHYSICS_MAX_SUSPENDED_WINDOWS = 12
+        const val PHYSICS_SETTINGS_GRACE_WINDOWS = 4
         const val AUTO_FLAT_PRESSURE_THRESHOLD = 0.20f
         const val AUTO_GLOW_PRESSURE_THRESHOLD = 0.01f
         const val AUTO_FLAT_BALL_FRACTION = 0.5f
