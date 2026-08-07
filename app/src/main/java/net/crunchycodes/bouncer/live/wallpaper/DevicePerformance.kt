@@ -51,6 +51,9 @@ internal object DevicePerformance {
     fun frameBudgetNanos(refreshRateHz: Float): Long =
         (1_000_000_000f / normalizeRefreshRateHz(refreshRateHz)).roundToInt().toLong()
 
+    fun renderWorkDurationNanos(startNanos: Long, endNanos: Long): Long =
+        (endNanos - startNanos).coerceAtLeast(0L)
+
     fun evaluateWindow(frameDurationsNanos: List<Long>, frameBudgetNanos: Long): FrameWindowMetrics {
         if (frameDurationsNanos.isEmpty()) {
             return FrameWindowMetrics(
@@ -123,6 +126,74 @@ internal object DevicePerformance {
         current < BouncerPhysics.MAX_BALL_COUNT -> current + 48
         else -> BouncerPhysics.MAX_BALL_COUNT
     }.coerceAtMost(BouncerPhysics.MAX_BALL_COUNT)
+}
+
+internal class EffectiveFrameBudgetTracker(
+    preferredRefreshRateHz: Float,
+    slowestAcceptedRefreshRateHz: Float = DevicePerformance.MIN_SUPPORTED_REFRESH_RATE_HZ,
+) {
+    private val preferredFrameBudgetNanos = DevicePerformance.frameBudgetNanos(preferredRefreshRateHz)
+    private val slowestFrameBudgetNanos = max(
+        preferredFrameBudgetNanos,
+        DevicePerformance.frameBudgetNanos(slowestAcceptedRefreshRateHz),
+    )
+    private val frameIntervalsNanos = LongArray(DevicePerformance.RUNTIME_WINDOW_FRAMES)
+    private var intervalCount = 0
+    private var lastFrameStartNanos: Long? = null
+    private var fasterWindowStreak = 0
+    private var effectiveFrameBudgetNanos = preferredFrameBudgetNanos
+
+    fun recordFrameStart(frameStartNanos: Long): Long {
+        val previousFrameStartNanos = lastFrameStartNanos
+        lastFrameStartNanos = frameStartNanos
+        if (previousFrameStartNanos == null) return effectiveFrameBudgetNanos
+
+        val intervalNanos = frameStartNanos - previousFrameStartNanos
+        if (intervalNanos <= 0L) return effectiveFrameBudgetNanos
+
+        frameIntervalsNanos[intervalCount++] = intervalNanos
+        if (intervalCount == frameIntervalsNanos.size) {
+            evaluateWindow()
+            intervalCount = 0
+        }
+        return effectiveFrameBudgetNanos
+    }
+
+    fun currentFrameBudgetNanos(): Long = effectiveFrameBudgetNanos
+
+    private fun evaluateWindow() {
+        // The median ignores isolated stalls while still following a sustained compositor
+        // cadence change. Presentation can relax the performance budget down to 30 Hz, but
+        // never make it more demanding than the preferred 60 Hz target.
+        val sortedIntervals = frameIntervalsNanos.copyOf().apply(LongArray::sort)
+        val observedFrameBudgetNanos = sortedIntervals[sortedIntervals.size / 2]
+            .coerceIn(preferredFrameBudgetNanos, slowestFrameBudgetNanos)
+
+        if (observedFrameBudgetNanos > effectiveFrameBudgetNanos * SLOWER_CADENCE_THRESHOLD) {
+            effectiveFrameBudgetNanos = observedFrameBudgetNanos
+            fasterWindowStreak = 0
+            return
+        }
+
+        if (
+            effectiveFrameBudgetNanos > preferredFrameBudgetNanos &&
+            observedFrameBudgetNanos < effectiveFrameBudgetNanos * FASTER_CADENCE_THRESHOLD
+        ) {
+            fasterWindowStreak++
+            if (fasterWindowStreak >= FASTER_CADENCE_WINDOWS) {
+                effectiveFrameBudgetNanos = observedFrameBudgetNanos
+                fasterWindowStreak = 0
+            }
+        } else {
+            fasterWindowStreak = 0
+        }
+    }
+
+    private companion object {
+        const val SLOWER_CADENCE_THRESHOLD = 1.2
+        const val FASTER_CADENCE_THRESHOLD = 0.85
+        const val FASTER_CADENCE_WINDOWS = 3
+    }
 }
 
 internal enum class RuntimePerformancePhase(val id: String) {
@@ -380,7 +451,15 @@ internal object RuntimePerformanceStateMachine {
             rollingPressure <= STABLE_ROLLING_PRESSURE_THRESHOLD
         if (!fullyStable) {
             return LoadTransition(
-                state = LoadThrottleState.Observing,
+                // Sub-throttling jitter pauses recovery but must not discard all progress.
+                // Otherwise a few mildly late frames can pin the population indefinitely.
+                state = when (currentState) {
+                    is LoadThrottleState.Stable,
+                    is LoadThrottleState.Recovering,
+                    -> currentState
+
+                    else -> LoadThrottleState.Observing
+                },
                 activeBallCount = currentBallCount,
             )
         }

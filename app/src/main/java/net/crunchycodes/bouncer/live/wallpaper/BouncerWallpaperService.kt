@@ -10,12 +10,12 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
-import android.hardware.display.DisplayManager
+import android.os.Build
 import android.os.SystemClock
 import android.service.wallpaper.WallpaperService
 import android.util.Log
-import android.view.Display
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.SurfaceHolder
 import androidx.core.graphics.createBitmap
 import java.util.Arrays
@@ -147,6 +147,7 @@ class BouncerWallpaperService : WallpaperService() {
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
             Log.d(TAG, "Surface created")
+            configureSurfaceFrameRate(holder)
             updateRenderingState(
                 reason = "surfaceCreated",
                 actionProvider = { lifecycleController.onSurfaceChanged(true) },
@@ -156,6 +157,22 @@ class BouncerWallpaperService : WallpaperService() {
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
             Log.d(TAG, "Surface changed: width=$width height=$height format=$format")
+            configureSurfaceFrameRate(holder)
+        }
+
+        private fun configureSurfaceFrameRate(holder: SurfaceHolder) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !holder.surface.isValid) return
+
+            try {
+                // This is a hint to SurfaceFlinger, not a frame limiter. The render loop below
+                // still paces itself, while Android can select a compatible display mode.
+                holder.surface.setFrameRate(
+                    TARGET_RENDER_RATE_HZ,
+                    Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                )
+            } catch (error: IllegalArgumentException) {
+                Log.w(TAG, "Unable to request ${TARGET_RENDER_RATE_HZ}Hz wallpaper surface", error)
+            }
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
@@ -374,8 +391,8 @@ class BouncerWallpaperService : WallpaperService() {
 
             override fun run() {
                 var lastFrameNanos = SystemClock.elapsedRealtimeNanos()
-                val targetRefreshRateHz = resolveTargetRefreshRateHz()
-                val targetFrameIntervalNanos = DevicePerformance.frameBudgetNanos(targetRefreshRateHz)
+                val targetFrameIntervalNanos = DevicePerformance.frameBudgetNanos(TARGET_RENDER_RATE_HZ)
+                val effectiveFrameBudgetTracker = EffectiveFrameBudgetTracker(TARGET_RENDER_RATE_HZ)
                 val deviceMaxBallCount = settings.effectiveMaxBallCount()
                 simulationState.prepareCapacity(deviceMaxBallCount)
                 ensureCollisionCapacity(deviceMaxBallCount * 4, deviceMaxBallCount)
@@ -383,6 +400,8 @@ class BouncerWallpaperService : WallpaperService() {
                 try {
                     while (!stopRequested.get() && !isInterrupted) {
                         val frameStartNanos = SystemClock.elapsedRealtimeNanos()
+                        val effectiveFrameBudgetNanos =
+                            effectiveFrameBudgetTracker.recordFrameStart(frameStartNanos)
                         val deltaTime = ((frameStartNanos - lastFrameNanos) / NANOS_PER_SECOND)
                             .toFloat()
                             .coerceIn(0f, MAX_DELTA_SECONDS)
@@ -418,22 +437,33 @@ class BouncerWallpaperService : WallpaperService() {
                         refreshBallAppearanceIfNeeded()
 
                         var canvas: Canvas? = null
+                        var renderWorkDurationNanos: Long? = null
                         try {
                             canvas = surfaceHolder.lockCanvas()
                             if (canvas != null) {
-                                // Physics and drawing stay on the same thread so ball state
-                                // is never read mid-update by another renderer.
-                                updateState(
-                                    width = canvas.width,
-                                    height = canvas.height,
-                                    deltaTime = deltaTime,
-                                    desiredBallCount = performanceSnapshot.activeBallCount,
-                                    solidBodyPhysicsAllowed = performanceSnapshot.solidBodyPhysicsAllowed,
-                                )
-                                drawFrame(
-                                    canvas = canvas,
-                                    quality = performanceSnapshot.renderQuality,
-                                )
+                                val renderWorkStartNanos = SystemClock.elapsedRealtimeNanos()
+                                try {
+                                    // Physics and drawing stay on the same thread so ball state
+                                    // is never read mid-update by another renderer.
+                                    updateState(
+                                        width = canvas.width,
+                                        height = canvas.height,
+                                        deltaTime = deltaTime,
+                                        desiredBallCount = performanceSnapshot.activeBallCount,
+                                        solidBodyPhysicsAllowed = performanceSnapshot.solidBodyPhysicsAllowed,
+                                    )
+                                    drawFrame(
+                                        canvas = canvas,
+                                        quality = performanceSnapshot.renderQuality,
+                                    )
+                                } finally {
+                                    // Buffer acquisition can wait for the compositor's physical
+                                    // cadence. Only simulation/drawing work should drive pruning.
+                                    renderWorkDurationNanos = DevicePerformance.renderWorkDurationNanos(
+                                        renderWorkStartNanos,
+                                        SystemClock.elapsedRealtimeNanos(),
+                                    )
+                                }
                             }
                         } catch (error: Exception) {
                             if (!stopRequested.get()) {
@@ -451,9 +481,11 @@ class BouncerWallpaperService : WallpaperService() {
                             }
                         }
 
-                        val frameDurationNanos = SystemClock.elapsedRealtimeNanos() - frameStartNanos
-                        runtimeBallController.recordFrame(frameDurationNanos, targetFrameIntervalNanos)
+                        renderWorkDurationNanos?.let { durationNanos ->
+                            runtimeBallController.recordFrame(durationNanos, effectiveFrameBudgetNanos)
+                        }
                         reportRuntimePerformanceIfChanged(runtimeBallController)
+                        val frameDurationNanos = SystemClock.elapsedRealtimeNanos() - frameStartNanos
                         val remainingFrameNanos = targetFrameIntervalNanos - frameDurationNanos
                         if (remainingFrameNanos > 0L) {
                             sleep(
@@ -771,15 +803,6 @@ class BouncerWallpaperService : WallpaperService() {
                 return ball
             }
 
-            private fun resolveTargetRefreshRateHz(): Float {
-                val calibrationRefreshRate = settings.calibrationRefreshRateHz
-                val displayManager = getSystemService(DisplayManager::class.java)
-                val displayRefreshRate = displayManager
-                    ?.getDisplay(Display.DEFAULT_DISPLAY)
-                    ?.refreshRate
-                return DevicePerformance.normalizeRefreshRateHz(displayRefreshRate ?: calibrationRefreshRate)
-            }
-
             private fun reportRuntimePerformanceIfChanged(controller: RuntimePerformanceController) {
                 val snapshot = controller.snapshot()
                 val ballCount = snapshot.activeBallCount
@@ -927,6 +950,7 @@ class BouncerWallpaperService : WallpaperService() {
         const val RENDER_THREAD_STOP_TIMEOUT_MS = 500L
         const val NANOS_PER_MILLISECOND = 1_000_000L
         const val NANOS_PER_SECOND = 1_000_000_000.0
+        const val TARGET_RENDER_RATE_HZ = 60f
         const val MAX_DELTA_SECONDS = 0.05f
         const val RETIRE_DURATION_MILLIS = 220L
         const val MIN_RETIRE_SCALE = 0.35f

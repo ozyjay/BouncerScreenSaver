@@ -30,6 +30,69 @@ class DevicePerformanceTest {
     }
 
     @Test
+    fun compositorWaitIsExcludedFromMeasuredRenderWork() {
+        val ninetyHzBudget = DevicePerformance.frameBudgetNanos(90f)
+        val sixtyHzPresentationInterval = DevicePerformance.frameBudgetNanos(60f)
+        val drawingDuration = 5_000_000L
+
+        val measuredWork = DevicePerformance.renderWorkDurationNanos(
+            startNanos = sixtyHzPresentationInterval,
+            endNanos = sixtyHzPresentationInterval + drawingDuration,
+        )
+
+        assertEquals(drawingDuration, measuredWork)
+        assertTrue(measuredWork < ninetyHzBudget)
+    }
+
+    @Test
+    fun effectiveBudgetAcceptsSustainedSlowerPresentationCadence() {
+        val tracker = EffectiveFrameBudgetTracker(preferredRefreshRateHz = 60f)
+        val sixtyHzBudget = DevicePerformance.frameBudgetNanos(60f)
+        val thirtyHzBudget = DevicePerformance.frameBudgetNanos(30f)
+
+        recordCadenceWindow(tracker, startNanos = 0L, frameIntervalNanos = thirtyHzBudget)
+
+        assertEquals(thirtyHzBudget, tracker.currentFrameBudgetNanos())
+        assertTrue(tracker.currentFrameBudgetNanos() > sixtyHzBudget)
+    }
+
+    @Test
+    fun effectiveBudgetIgnoresIsolatedPresentationStalls() {
+        val tracker = EffectiveFrameBudgetTracker(preferredRefreshRateHz = 60f)
+        val sixtyHzBudget = DevicePerformance.frameBudgetNanos(60f)
+        var frameStartNanos = 0L
+        tracker.recordFrameStart(frameStartNanos)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) { frame ->
+            frameStartNanos += if (frame % 9 == 0) sixtyHzBudget * 3 else sixtyHzBudget
+            tracker.recordFrameStart(frameStartNanos)
+        }
+
+        assertEquals(sixtyHzBudget, tracker.currentFrameBudgetNanos())
+    }
+
+    @Test
+    fun effectiveBudgetReturnsToPreferredCadenceWithHysteresis() {
+        val tracker = EffectiveFrameBudgetTracker(preferredRefreshRateHz = 60f)
+        val sixtyHzBudget = DevicePerformance.frameBudgetNanos(60f)
+        val thirtyHzBudget = DevicePerformance.frameBudgetNanos(30f)
+        var frameStartNanos = recordCadenceWindow(
+            tracker,
+            startNanos = 0L,
+            frameIntervalNanos = thirtyHzBudget,
+        )
+        assertEquals(thirtyHzBudget, tracker.currentFrameBudgetNanos())
+
+        repeat(2) {
+            frameStartNanos = recordCadenceWindow(tracker, frameStartNanos, sixtyHzBudget)
+        }
+        assertEquals(thirtyHzBudget, tracker.currentFrameBudgetNanos())
+
+        recordCadenceWindow(tracker, frameStartNanos, sixtyHzBudget)
+        assertEquals(sixtyHzBudget, tracker.currentFrameBudgetNanos())
+    }
+
+    @Test
     fun runtimeControllerReducesAndRecoversBallCount() {
         val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
         val controller = RuntimePerformanceController(
@@ -61,6 +124,33 @@ class DevicePerformanceTest {
 
         assertTrue(controller.snapshot().activeBallCount > lowestBallCount)
         assertTrue(controller.snapshot().activeBallCount <= 100)
+    }
+
+    @Test
+    fun mildJitterPausesRecoveryWithoutResettingItsProgress() {
+        var state = RuntimePerformanceStateMachine.initialState(performanceConfig())
+        repeat(6) {
+            state = RuntimePerformanceStateMachine.transition(
+                state,
+                RuntimePerformanceEvent.WindowMeasured(0.3f),
+            )
+        }
+        repeat(12) {
+            state = RuntimePerformanceStateMachine.transition(
+                state,
+                RuntimePerformanceEvent.WindowMeasured(0f),
+            )
+        }
+        val partiallyRecoveredCount = state.snapshot.activeBallCount
+
+        repeat(24) { window ->
+            state = RuntimePerformanceStateMachine.transition(
+                state,
+                RuntimePerformanceEvent.WindowMeasured(if (window % 2 == 0) 0.02f else 0f),
+            )
+        }
+
+        assertTrue(state.snapshot.activeBallCount > partiallyRecoveredCount)
     }
 
     @Test
@@ -539,4 +629,18 @@ class DevicePerformanceTest {
             automaticPhysics = automaticPhysics,
         ),
     )
+
+    private fun recordCadenceWindow(
+        tracker: EffectiveFrameBudgetTracker,
+        startNanos: Long,
+        frameIntervalNanos: Long,
+    ): Long {
+        var frameStartNanos = startNanos
+        tracker.recordFrameStart(frameStartNanos)
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            frameStartNanos += frameIntervalNanos
+            tracker.recordFrameStart(frameStartNanos)
+        }
+        return frameStartNanos
+    }
 }
