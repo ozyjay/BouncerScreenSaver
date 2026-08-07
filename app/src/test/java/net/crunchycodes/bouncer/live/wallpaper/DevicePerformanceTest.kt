@@ -38,23 +38,29 @@ class DevicePerformanceTest {
             initialRenderQuality = RenderQuality.Flat,
         )
 
-        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 2) {
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 3) {
             controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
         }
 
         val reducedBallCount = controller.activeBallCount()
         assertTrue(reducedBallCount < 100)
 
-        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 6) {
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 8) {
+            controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
+        }
+        val lowestBallCount = controller.activeBallCount()
+        assertTrue(lowestBallCount <= reducedBallCount)
+
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 12) {
             controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
         }
 
-        assertTrue(controller.activeBallCount() > reducedBallCount)
+        assertTrue(controller.activeBallCount() > lowestBallCount)
         assertTrue(controller.activeBallCount() <= 100)
     }
 
     @Test
-    fun runtimeControllerDisablesGlowBeforeRemovingBalls() {
+    fun runtimeControllerKeepsGlowAndReducesBallCount() {
         val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
         val controller = RuntimeBallCountController(
             configuredBallCount = 100,
@@ -62,22 +68,16 @@ class DevicePerformanceTest {
             initialRenderQuality = RenderQuality.Glow,
         )
 
-        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 2) {
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 3) {
             controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
         }
 
-        assertEquals(RenderQuality.Flat, controller.renderQuality())
-        assertEquals(100, controller.activeBallCount())
-
-        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 2) {
-            controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
-        }
-
+        assertEquals(RenderQuality.Glow, controller.renderQuality())
         assertTrue(controller.activeBallCount() < 100)
     }
 
     @Test
-    fun runtimeControllerKeepsGlowDisabledAfterOverload() {
+    fun runtimeControllerKeepsGlowAfterOverloadAndRecovery() {
         val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
         val controller = RuntimeBallCountController(
             configuredBallCount = 100,
@@ -85,16 +85,105 @@ class DevicePerformanceTest {
             initialRenderQuality = RenderQuality.Glow,
         )
 
-        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 2) {
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 3) {
             controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
         }
-        assertEquals(RenderQuality.Flat, controller.renderQuality())
+        assertEquals(RenderQuality.Glow, controller.renderQuality())
 
         repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 24) {
             controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
         }
 
+        assertEquals(RenderQuality.Glow, controller.renderQuality())
+    }
+
+    @Test
+    fun explicitStyleChangeUpdatesRenderQuality() {
+        val controller = RuntimeBallCountController(
+            configuredBallCount = 100,
+            deviceMaxBallCount = 100,
+            initialRenderQuality = RenderQuality.Flat,
+        )
         assertEquals(RenderQuality.Flat, controller.renderQuality())
+
+        controller.updatePreferredRenderQuality(RenderQuality.Glow, force = true)
+
+        assertEquals(RenderQuality.Glow, controller.renderQuality())
+    }
+
+    @Test
+    fun rollingPressureScalesReductionSeverity() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val mildController = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+        val severeController = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+
+        repeat(3) {
+            repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES) { frame ->
+                val mildDuration = if (frame < 5) {
+                    (frameBudgetNanos * 1.2f).toLong()
+                } else {
+                    frameBudgetNanos
+                }
+                mildController.recordFrame(mildDuration, frameBudgetNanos)
+                severeController.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
+            }
+        }
+
+        assertTrue(severeController.activeBallCount() < mildController.activeBallCount())
+        assertTrue(mildController.rollingPerformancePressure() > 0f)
+    }
+
+    @Test
+    fun autoStyleUsesFlatOnlyAfterSustainedPressureAndBallReduction() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+        controller.updatePreferredRenderQuality(
+            value = RenderQuality.Glow,
+            allowAutomaticStyleChanges = true,
+            force = true,
+        )
+
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 8) {
+            controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
+        }
+
+        assertEquals(RenderQuality.Flat, controller.renderQuality())
+        assertTrue(controller.activeBallCount() <= 50)
+    }
+
+    @Test
+    fun explicitGlowNeverChangesStyleUnderSustainedPressure() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 24) {
+            controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
+        }
+
+        assertEquals(RenderQuality.Glow, controller.renderQuality())
+        assertTrue(controller.activeBallCount() < 100)
+    }
+
+    @Test
+    fun autoStyleRestoresGlowAfterLongStableRecovery() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+        controller.updatePreferredRenderQuality(
+            value = RenderQuality.Glow,
+            allowAutomaticStyleChanges = true,
+            force = true,
+        )
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 8) {
+            controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
+        }
+        assertEquals(RenderQuality.Flat, controller.renderQuality())
+
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 60) {
+            controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
+        }
+
+        assertEquals(RenderQuality.Glow, controller.renderQuality())
+        assertTrue(controller.activeBallCount() >= 80)
     }
 
     @Test
@@ -135,6 +224,12 @@ class DevicePerformanceTest {
             RenderQuality.Glow,
             DevicePerformance.renderQuality(deviceMaxBallCount = 120),
         )
+    }
+
+    @Test
+    fun ballStyleOverridesAutomaticInitialQuality() {
+        assertEquals(RenderQuality.Glow, DevicePerformance.renderQuality(24, BallStyle.GLOW))
+        assertEquals(RenderQuality.Flat, DevicePerformance.renderQuality(120, BallStyle.FLAT))
     }
 
     @Test

@@ -12,7 +12,6 @@ internal data class LauncherBall(
 )
 
 internal object LauncherSimulation {
-    const val DEFAULT_DASHBOARD_BALL_COUNT = 18
     const val MAX_DASHBOARD_BALL_COUNT = 48
     const val MAX_SPAWN_BATCH = 8
     const val GLOW_RENDER_THRESHOLD = 36
@@ -27,6 +26,12 @@ internal object LauncherSimulation {
         (clampDashboardBallCount(targetCount, maxBallCount) - currentCount.coerceAtLeast(0))
             .coerceAtLeast(0)
             .coerceAtMost(MAX_SPAWN_BATCH)
+
+    fun useGlow(ballCount: Int, ballStyle: BallStyle): Boolean = when (ballStyle) {
+        BallStyle.AUTO -> ballCount <= GLOW_RENDER_THRESHOLD
+        BallStyle.GLOW -> true
+        BallStyle.FLAT -> false
+    }
 
     fun update(balls: List<LauncherBall>, width: Float, height: Float, deltaSeconds: Float) {
         if (width <= 0f || height <= 0f) return

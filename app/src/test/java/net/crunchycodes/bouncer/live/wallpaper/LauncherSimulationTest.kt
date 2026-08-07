@@ -27,6 +27,14 @@ class LauncherSimulationTest {
         assertEquals(0, LauncherSimulation.ballsToSpawn(currentCount = 48, targetCount = 48))
     }
 
+    @Test
+    fun ballStyleControlsDashboardGlowRendering() {
+        assertTrue(LauncherSimulation.useGlow(ballCount = 12, ballStyle = BallStyle.AUTO))
+        assertTrue(LauncherSimulation.useGlow(ballCount = 48, ballStyle = BallStyle.GLOW))
+        assertEquals(false, LauncherSimulation.useGlow(ballCount = 12, ballStyle = BallStyle.FLAT))
+        assertEquals(false, LauncherSimulation.useGlow(ballCount = 48, ballStyle = BallStyle.AUTO))
+    }
+
     // The dashboard background deliberately stays simple, but its timing still needs coverage.
     @Test
     fun updateUsesElapsedTimeAndKeepsBallsInBounds() {

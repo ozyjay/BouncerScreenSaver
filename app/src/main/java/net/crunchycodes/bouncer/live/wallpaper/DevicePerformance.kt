@@ -102,11 +102,17 @@ internal object DevicePerformance {
         (deviceMaxBallSpeed(deviceMaxBallCount) * 0.85f)
             .coerceIn(BouncerPhysics.MIN_BALL_SPEED, BouncerPhysics.MAX_BALL_SPEED)
 
-    fun renderQuality(deviceMaxBallCount: Int): RenderQuality {
-        if (deviceMaxBallCount <= GLOW_DEVICE_CAP_THRESHOLD) {
-            return RenderQuality.Flat
+    fun renderQuality(
+        deviceMaxBallCount: Int,
+        ballStyle: BallStyle = BallStyle.AUTO,
+    ): RenderQuality = when (ballStyle) {
+        BallStyle.GLOW -> RenderQuality.Glow
+        BallStyle.FLAT -> RenderQuality.Flat
+        BallStyle.AUTO -> if (deviceMaxBallCount <= GLOW_DEVICE_CAP_THRESHOLD) {
+            RenderQuality.Flat
+        } else {
+            RenderQuality.Glow
         }
-        return RenderQuality.Glow
     }
 
     fun nextCalibrationBallCount(current: Int): Int = when {
@@ -121,15 +127,18 @@ internal object DevicePerformance {
 internal class RuntimeBallCountController(
     configuredBallCount: Int,
     private val deviceMaxBallCount: Int,
-    private val initialRenderQuality: RenderQuality = DevicePerformance.renderQuality(deviceMaxBallCount),
+    initialRenderQuality: RenderQuality = DevicePerformance.renderQuality(deviceMaxBallCount),
 ) {
     private var configuredBallCount = clamp(configuredBallCount)
     private var activeBallCount = this.configuredBallCount
+    private var preferredRenderQuality = initialRenderQuality
     private var currentRenderQuality = initialRenderQuality
+    private var automaticStyleChanges = false
     private var frameCounter = 0
     private var badFrames = 0
-    private var consecutiveBadWindows = 0
+    private var totalFrameDurationNanos = 0.0
     private var consecutiveGoodWindows = 0
+    private val performancePressureHistory = ArrayDeque<Float>(PERFORMANCE_HISTORY_WINDOWS)
 
     fun activeBallCount(): Int = activeBallCount
 
@@ -140,9 +149,32 @@ internal class RuntimeBallCountController(
         activeBallCount = min(activeBallCount, configuredBallCount)
     }
 
+    fun updatePreferredRenderQuality(
+        value: RenderQuality,
+        allowAutomaticStyleChanges: Boolean = false,
+        force: Boolean = false,
+    ) {
+        if (
+            value == preferredRenderQuality &&
+            allowAutomaticStyleChanges == automaticStyleChanges &&
+            !force
+        ) {
+            return
+        }
+        preferredRenderQuality = value
+        currentRenderQuality = value
+        automaticStyleChanges = allowAutomaticStyleChanges
+        frameCounter = 0
+        badFrames = 0
+        totalFrameDurationNanos = 0.0
+        consecutiveGoodWindows = 0
+        performancePressureHistory.clear()
+    }
+
     fun recordFrame(frameDurationNanos: Long, frameBudgetNanos: Long): Int {
         val badFrameThreshold = (frameBudgetNanos * 1.1f).roundToInt().toLong()
         frameCounter++
+        totalFrameDurationNanos += frameDurationNanos.coerceAtLeast(0L).toDouble()
         if (frameDurationNanos > badFrameThreshold) {
             badFrames++
         }
@@ -152,42 +184,117 @@ internal class RuntimeBallCountController(
         }
 
         val badRatio = badFrames.toFloat() / frameCounter.toFloat()
-        if (badRatio > 0.08f) {
-            consecutiveBadWindows++
-            consecutiveGoodWindows = 0
-            if (consecutiveBadWindows >= 2) {
-                if (currentRenderQuality == RenderQuality.Glow) {
-                    currentRenderQuality = RenderQuality.Flat
-                } else {
-                    activeBallCount = max(adaptiveMinimumBallCount(), activeBallCount - reductionStep())
+        val averageFrameDuration = totalFrameDurationNanos / frameCounter.toDouble()
+        val averageOverrun = (averageFrameDuration / frameBudgetNanos.coerceAtLeast(1L) - 1.0)
+            .toFloat()
+            .coerceAtLeast(0f)
+        addPerformancePressure(max(badRatio, averageOverrun))
+
+        if (performancePressureHistory.size >= MIN_HISTORY_FOR_ADJUSTMENT) {
+            val rollingPressure = rollingPerformancePressure()
+            val reductionFraction = reductionFraction(rollingPressure)
+            if (reductionFraction > 0f) {
+                activeBallCount = max(
+                    adaptiveMinimumBallCount(),
+                    activeBallCount - reductionStep(reductionFraction),
+                )
+                consecutiveGoodWindows = 0
+            } else if (rollingPressure <= STABLE_PRESSURE_THRESHOLD) {
+                consecutiveGoodWindows++
+                if (consecutiveGoodWindows >= RECOVERY_WINDOW_COUNT && activeBallCount < configuredBallCount) {
+                    activeBallCount = min(configuredBallCount, activeBallCount + recoveryStep())
+                    consecutiveGoodWindows = 0
                 }
-                consecutiveBadWindows = 0
-            }
-        } else {
-            consecutiveGoodWindows++
-            consecutiveBadWindows = 0
-            if (consecutiveGoodWindows >= 6 && activeBallCount < configuredBallCount) {
-                activeBallCount = min(configuredBallCount, activeBallCount + recoveryStep())
+            } else {
                 consecutiveGoodWindows = 0
             }
+
+            updateAutomaticRenderQuality(rollingPressure)
+        } else {
+            consecutiveGoodWindows++
         }
 
         frameCounter = 0
         badFrames = 0
+        totalFrameDurationNanos = 0.0
         return activeBallCount
     }
 
-    private fun reductionStep(): Int = max(2, (activeBallCount * 0.1f).roundToInt())
+    internal fun rollingPerformancePressure(): Float =
+        if (performancePressureHistory.isEmpty()) {
+            0f
+        } else {
+            performancePressureHistory.average().toFloat()
+        }
+
+    private fun addPerformancePressure(value: Float) {
+        if (performancePressureHistory.size == PERFORMANCE_HISTORY_WINDOWS) {
+            performancePressureHistory.removeFirst()
+        }
+        performancePressureHistory.addLast(value.coerceIn(0f, 1f))
+    }
+
+    private fun reductionFraction(rollingPressure: Float): Float = when {
+        rollingPressure >= SEVERE_PRESSURE_THRESHOLD -> 0.20f
+        rollingPressure >= MODERATE_PRESSURE_THRESHOLD -> 0.12f
+        rollingPressure >= MILD_PRESSURE_THRESHOLD -> 0.06f
+        else -> 0f
+    }
+
+    private fun reductionStep(fraction: Float): Int =
+        max(2, (activeBallCount * fraction).roundToInt())
 
     private fun recoveryStep(): Int = max(1, (configuredBallCount * 0.05f).roundToInt())
 
     private fun adaptiveMinimumBallCount(): Int =
         min(configuredBallCount, max(MIN_ADAPTIVE_BALL_COUNT, (configuredBallCount * 0.15f).roundToInt()))
 
+    private fun updateAutomaticRenderQuality(rollingPressure: Float) {
+        if (
+            !automaticStyleChanges ||
+            preferredRenderQuality != RenderQuality.Glow ||
+            performancePressureHistory.size < PERFORMANCE_HISTORY_WINDOWS
+        ) {
+            return
+        }
+
+        val flatSwitchBallCount = max(
+            adaptiveMinimumBallCount(),
+            (configuredBallCount * AUTO_FLAT_BALL_FRACTION).roundToInt(),
+        )
+        if (
+            currentRenderQuality == RenderQuality.Glow &&
+            rollingPressure >= AUTO_FLAT_PRESSURE_THRESHOLD &&
+            activeBallCount <= flatSwitchBallCount
+        ) {
+            currentRenderQuality = RenderQuality.Flat
+            return
+        }
+
+        if (
+            currentRenderQuality == RenderQuality.Flat &&
+            rollingPressure <= AUTO_GLOW_PRESSURE_THRESHOLD &&
+            activeBallCount >= (configuredBallCount * AUTO_GLOW_BALL_FRACTION).roundToInt()
+        ) {
+            currentRenderQuality = RenderQuality.Glow
+        }
+    }
+
     private fun clamp(value: Int): Int =
         value.coerceIn(BouncerPhysics.MIN_BALL_COUNT, deviceMaxBallCount)
 
     private companion object {
         const val MIN_ADAPTIVE_BALL_COUNT = 4
+        const val PERFORMANCE_HISTORY_WINDOWS = 8
+        const val MIN_HISTORY_FOR_ADJUSTMENT = 3
+        const val RECOVERY_WINDOW_COUNT = 3
+        const val STABLE_PRESSURE_THRESHOLD = 0.015f
+        const val MILD_PRESSURE_THRESHOLD = 0.05f
+        const val MODERATE_PRESSURE_THRESHOLD = 0.12f
+        const val SEVERE_PRESSURE_THRESHOLD = 0.25f
+        const val AUTO_FLAT_PRESSURE_THRESHOLD = 0.20f
+        const val AUTO_GLOW_PRESSURE_THRESHOLD = 0.01f
+        const val AUTO_FLAT_BALL_FRACTION = 0.5f
+        const val AUTO_GLOW_BALL_FRACTION = 0.8f
     }
 }

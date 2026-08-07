@@ -67,6 +67,9 @@ class BouncerWallpaperService : WallpaperService() {
         @Volatile
         private var transparency = BallAppearance.DEFAULT_TRANSPARENCY
 
+        @Volatile
+        private var currentBallStyle = BallStyle.AUTO
+
         private val appearanceRevision = AtomicLong(0L)
 
         @Volatile
@@ -87,6 +90,9 @@ class BouncerWallpaperService : WallpaperService() {
 
         @Volatile
         private var renderThread: RenderThread? = null
+
+        private var runtimeBallController: RuntimeBallCountController? = null
+        private var runtimeControllerDeviceCap = 0
 
         override fun onCreate(surfaceHolder: SurfaceHolder?) {
             super.onCreate(surfaceHolder)
@@ -161,6 +167,7 @@ class BouncerWallpaperService : WallpaperService() {
             synchronized(lifecycleLock) {
                 if (renderThread == null) {
                     simulationState.clear()
+                    runtimeBallController = null
                 }
             }
             super.onDestroy()
@@ -254,6 +261,7 @@ class BouncerWallpaperService : WallpaperService() {
             Log.d(TAG, "Render thread exited id=$threadId reason=$reason")
             if (lifecycleController.currentState().destroyed) {
                 simulationState.clear()
+                runtimeBallController = null
             }
             val restartThreadId = exitResult.restartThreadId ?: return
             Log.d(TAG, "Restarting render thread automatically with id=$restartThreadId")
@@ -284,6 +292,9 @@ class BouncerWallpaperService : WallpaperService() {
             }
             if (changedKey == null || changedKey == SettingsManager.KEY_TRANSPARENCY) {
                 transparency = settings.transparency
+            }
+            if (changedKey == null || changedKey == SettingsManager.KEY_BALL_STYLE) {
+                currentBallStyle = settings.ballStyle
             }
             if (changedKey == null || changedKey == SettingsManager.KEY_PHYSICS) {
                 physicsEnabled = settings.physicsEnabled
@@ -345,11 +356,8 @@ class BouncerWallpaperService : WallpaperService() {
                 val deviceMaxBallCount = settings.effectiveMaxBallCount()
                 simulationState.prepareCapacity(deviceMaxBallCount)
                 ensureCollisionCapacity(deviceMaxBallCount * 4, deviceMaxBallCount)
-                val runtimeBallController = RuntimeBallCountController(
-                    configuredBallCount = targetBallCount,
-                    deviceMaxBallCount = deviceMaxBallCount,
-                    initialRenderQuality = DevicePerformance.renderQuality(deviceMaxBallCount),
-                )
+                val runtimeBallController = obtainRuntimeBallController(deviceMaxBallCount)
+                var appliedBallStyle = currentBallStyle
                 try {
                     while (!stopRequested.get() && !isInterrupted) {
                         val frameStartNanos = SystemClock.elapsedRealtimeNanos()
@@ -358,6 +366,13 @@ class BouncerWallpaperService : WallpaperService() {
                             .coerceIn(0f, MAX_DELTA_SECONDS)
                         lastFrameNanos = frameStartNanos
                         runtimeBallController.updateConfiguredBallCount(targetBallCount)
+                        val requestedBallStyle = currentBallStyle
+                        runtimeBallController.updatePreferredRenderQuality(
+                            value = DevicePerformance.renderQuality(deviceMaxBallCount, requestedBallStyle),
+                            allowAutomaticStyleChanges = requestedBallStyle == BallStyle.AUTO,
+                            force = requestedBallStyle != appliedBallStyle,
+                        )
+                        appliedBallStyle = requestedBallStyle
                         refreshBallAppearanceIfNeeded()
 
                         var canvas: Canvas? = null
@@ -688,6 +703,25 @@ class BouncerWallpaperService : WallpaperService() {
                     ?.getDisplay(Display.DEFAULT_DISPLAY)
                     ?.refreshRate
                 return DevicePerformance.normalizeRefreshRateHz(displayRefreshRate ?: calibrationRefreshRate)
+            }
+        }
+
+        private fun obtainRuntimeBallController(deviceMaxBallCount: Int): RuntimeBallCountController {
+            val existing = runtimeBallController
+            if (existing != null && runtimeControllerDeviceCap == deviceMaxBallCount) {
+                return existing
+            }
+
+            return RuntimeBallCountController(
+                configuredBallCount = targetBallCount,
+                deviceMaxBallCount = deviceMaxBallCount,
+                initialRenderQuality = DevicePerformance.renderQuality(
+                    deviceMaxBallCount,
+                    currentBallStyle,
+                ),
+            ).also {
+                runtimeBallController = it
+                runtimeControllerDeviceCap = deviceMaxBallCount
             }
         }
 

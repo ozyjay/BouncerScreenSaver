@@ -491,7 +491,10 @@ class MainActivity : ComponentActivity() {
             frameTick
 
             drawIntoCanvas { canvas ->
-                val useGlow = balls.size <= LauncherSimulation.GLOW_RENDER_THRESHOLD
+                val useGlow = LauncherSimulation.useGlow(
+                    ballCount = balls.size,
+                    ballStyle = simulationSettings.ballStyle,
+                )
                 val opacity = BallAppearance.opacityForTransparency(simulationSettings.transparency)
                 for (ball in balls) {
                     if (useGlow) {
@@ -682,6 +685,7 @@ class MainActivity : ComponentActivity() {
             palette = palette,
             brightness = brightness,
             transparency = transparency,
+            ballStyle = ballStyle,
         )
 
     private data class DashboardSimulationSettings(
@@ -690,6 +694,7 @@ class MainActivity : ComponentActivity() {
         val palette: ColorPalette,
         val brightness: Float,
         val transparency: Float,
+        val ballStyle: BallStyle,
     )
 
     private class LandingCalibrationController(
@@ -775,6 +780,7 @@ class MainActivity : ComponentActivity() {
             SettingsManager.KEY_PALETTE,
             SettingsManager.KEY_BRIGHTNESS,
             SettingsManager.KEY_TRANSPARENCY,
+            SettingsManager.KEY_BALL_STYLE,
         )
 
         val DashboardRandomSource = object : RandomSource {

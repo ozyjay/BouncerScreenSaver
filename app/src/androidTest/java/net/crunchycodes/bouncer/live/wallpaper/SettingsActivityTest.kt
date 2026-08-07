@@ -1,6 +1,6 @@
 package net.crunchycodes.bouncer.live.wallpaper
 
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.Lifecycle
@@ -26,8 +26,20 @@ class SettingsActivityTest {
 
     @Test
     fun appearanceControlsAreDisplayed() {
+        composeTestRule.onNodeWithText("Ball Style").assertExists()
+        composeTestRule.onNodeWithText("Auto").assertExists()
+        composeTestRule.onNodeWithText("Glow").assertExists()
+        composeTestRule.onNodeWithText("Flat").assertExists()
         composeTestRule.onNodeWithText("Brightness:", substring = true).assertExists()
         composeTestRule.onNodeWithText("Transparency:", substring = true).assertExists()
+    }
+
+    @Test
+    fun collapsedSectionCanBeExpanded() {
+        composeTestRule.onNodeWithText("Motion & behaviour").performClick()
+
+        composeTestRule.onNodeWithText("Base Speed:", substring = true).assertExists()
+        composeTestRule.onNodeWithText("Avg Lifespan:", substring = true).assertExists()
     }
 
     @Test

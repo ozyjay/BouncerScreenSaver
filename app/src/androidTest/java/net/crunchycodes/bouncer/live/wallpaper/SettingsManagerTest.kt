@@ -23,6 +23,7 @@ class SettingsManagerTest {
         appContext.getSharedPreferences("bouncer_prefs", Context.MODE_PRIVATE)
             .edit()
             .clear()
+            .putInt(SettingsManager.KEY_DEVICE_MAX_BALL_COUNT, BouncerPhysics.MAX_BALL_COUNT)
             .commit()
         settingsManager = SettingsManager(appContext)
     }
@@ -82,6 +83,23 @@ class SettingsManagerTest {
 
         assertEquals(BallAppearance.MAX_BRIGHTNESS, settingsManager.brightness, 0f)
         assertEquals(BallAppearance.MIN_TRANSPARENCY, settingsManager.transparency, 0f)
+    }
+
+    @Test
+    fun ballStylePersistsAsStableIdentifier() {
+        settingsManager.ballStyle = BallStyle.FLAT
+
+        assertEquals(BallStyle.FLAT, settingsManager.ballStyle)
+    }
+
+    @Test
+    fun unknownBallStyleFallsBackToAuto() {
+        appContext.getSharedPreferences("bouncer_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putString(SettingsManager.KEY_BALL_STYLE, "unknown")
+            .commit()
+
+        assertEquals(BallStyle.AUTO, settingsManager.ballStyle)
     }
 
     @Test

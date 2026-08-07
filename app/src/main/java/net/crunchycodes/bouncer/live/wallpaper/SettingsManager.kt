@@ -16,6 +16,7 @@ internal class SettingsManager(context: Context) {
         const val KEY_PALETTE = "palette"
         const val KEY_BRIGHTNESS = "brightness"
         const val KEY_TRANSPARENCY = "transparency"
+        const val KEY_BALL_STYLE = "ball_style"
         const val KEY_PHYSICS = "physics_enabled"
         const val KEY_SIZE_BEHAVIOR = "size_behavior"
         const val KEY_LIFESPAN = "lifespan_base"
@@ -64,6 +65,10 @@ internal class SettingsManager(context: Context) {
             putFloat(KEY_TRANSPARENCY, BallAppearance.clampTransparency(value))
         }
 
+    var ballStyle: BallStyle
+        get() = BallStyle.fromStoredValue(prefs.getString(KEY_BALL_STYLE, BallStyle.AUTO.id))
+        set(value) = prefs.edit { putString(KEY_BALL_STYLE, value.id) }
+
     var physicsEnabled: Boolean
         get() = prefs.getBoolean(KEY_PHYSICS, true)
         set(value) = prefs.edit { putBoolean(KEY_PHYSICS, value) }
@@ -100,16 +105,6 @@ internal class SettingsManager(context: Context) {
             putFloat(KEY_CALIBRATION_REFRESH_RATE, DevicePerformance.normalizeRefreshRateHz(value))
         }
 
-    var deviceMaxBallCount: Int
-        get() = prefs.getInt(KEY_DEVICE_MAX_BALL_COUNT, DevicePerformance.fallbackMaxBallCount())
-            .coerceIn(BouncerPhysics.MIN_BALL_COUNT, BouncerPhysics.MAX_BALL_COUNT)
-        set(value) = prefs.edit {
-            putInt(
-                KEY_DEVICE_MAX_BALL_COUNT,
-                value.coerceIn(BouncerPhysics.MIN_BALL_COUNT, BouncerPhysics.MAX_BALL_COUNT),
-            )
-        }
-
     var recommendedBallCount: Int
         get() = clampBallCountForDevice(
             prefs.getInt(
@@ -131,17 +126,6 @@ internal class SettingsManager(context: Context) {
                 KEY_DEVICE_MAX_BALL_SPEED,
                 value.coerceIn(BouncerPhysics.MIN_BALL_SPEED, BouncerPhysics.MAX_BALL_SPEED),
             )
-        }
-
-    var recommendedBallSpeed: Float
-        get() = clampBallSpeedForDevice(
-            prefs.getFloat(
-                KEY_RECOMMENDED_BALL_SPEED,
-                DevicePerformance.recommendedBallSpeed(deviceBallCountCeiling()),
-            ),
-        )
-        set(value) = prefs.edit {
-            putFloat(KEY_RECOMMENDED_BALL_SPEED, clampBallSpeedForDevice(value))
         }
 
     fun effectiveMaxBallCount(): Int = deviceBallCountCeiling()
