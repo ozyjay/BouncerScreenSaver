@@ -163,6 +163,31 @@ class DevicePerformanceTest {
     }
 
     @Test
+    fun failedCollisionProbeStartsCollisionEnabledCooldown() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+        controller.updateAutomaticPhysicsReduction(true)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 12) {
+            controller.recordFrame((frameBudgetNanos * 1.05f).toLong(), frameBudgetNanos)
+        }
+        assertTrue(controller.solidBodyPhysicsAllowed())
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 4) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+        assertTrue(controller.solidBodyPhysicsAllowed())
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 20) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+        assertTrue(controller.solidBodyPhysicsAllowed())
+    }
+
+    @Test
     fun adjustingSettingsImmediatelyClearsCollisionPauseAndHistory() {
         val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
         val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
@@ -333,6 +358,7 @@ class DevicePerformanceTest {
         }
 
         assertTrue(controller.activeBallCount() >= 4)
+        assertTrue(controller.activeBallCount() <= 12)
     }
 
     @Test

@@ -145,6 +145,10 @@ internal class RuntimeBallCountController(
     private var consecutivePhysicsRecoveryWindows = 0
     private var physicsSuspendedWindowCount = 0
     private var physicsResumeGraceWindows = 0
+    private var failedPhysicsProbeCount = 0
+    private var physicsProbeInProgress = false
+    private var consecutivePhysicsHealthyWindows = 0
+    private var physicsPauseCooldownWindows = 0
     private val performancePressureHistory = ArrayDeque<Float>(PERFORMANCE_HISTORY_WINDOWS)
 
     fun activeBallCount(): Int = activeBallCount
@@ -159,6 +163,10 @@ internal class RuntimeBallCountController(
         currentRenderQuality = preferredRenderQuality
         solidBodyPhysicsSuspended = false
         physicsResumeGraceWindows = PHYSICS_SETTINGS_GRACE_WINDOWS
+        failedPhysicsProbeCount = 0
+        physicsProbeInProgress = false
+        consecutivePhysicsHealthyWindows = 0
+        physicsPauseCooldownWindows = 0
     }
 
     fun updateAdaptivePerformance(enabled: Boolean) {
@@ -169,6 +177,9 @@ internal class RuntimeBallCountController(
             activeBallCount = configuredBallCount
             currentRenderQuality = preferredRenderQuality
             solidBodyPhysicsSuspended = false
+            failedPhysicsProbeCount = 0
+            physicsProbeInProgress = false
+            physicsPauseCooldownWindows = 0
         }
     }
 
@@ -180,6 +191,10 @@ internal class RuntimeBallCountController(
         if (!enabled) {
             solidBodyPhysicsSuspended = false
             physicsResumeGraceWindows = 0
+            failedPhysicsProbeCount = 0
+            physicsProbeInProgress = false
+            consecutivePhysicsHealthyWindows = 0
+            physicsPauseCooldownWindows = 0
         }
     }
 
@@ -311,6 +326,14 @@ internal class RuntimeBallCountController(
 
     private fun updateAutomaticPhysics(latestPressure: Float, responsivePressure: Float) {
         if (!automaticPhysicsReduction) return
+        if (physicsPauseCooldownWindows > 0) {
+            physicsPauseCooldownWindows--
+            solidBodyPhysicsSuspended = false
+            if (physicsPauseCooldownWindows == 0) {
+                resetPerformanceHistory()
+            }
+            return
+        }
         if (physicsResumeGraceWindows > 0) {
             physicsResumeGraceWindows--
             solidBodyPhysicsSuspended = false
@@ -318,41 +341,73 @@ internal class RuntimeBallCountController(
         }
 
         if (!solidBodyPhysicsSuspended) {
+            if (latestPressure <= PHYSICS_RECOVERY_PRESSURE_THRESHOLD) {
+                consecutivePhysicsHealthyWindows++
+                if (consecutivePhysicsHealthyWindows >= PHYSICS_PROBE_SUCCESS_WINDOWS) {
+                    failedPhysicsProbeCount = 0
+                    physicsProbeInProgress = false
+                    consecutivePhysicsHealthyWindows = 0
+                }
+            } else {
+                consecutivePhysicsHealthyWindows = 0
+            }
+
             val sustainedHeavyLoad =
                 performancePressureHistory.size >= MIN_HISTORY_FOR_ADJUSTMENT &&
                     responsivePressure >= PHYSICS_SUSPEND_PRESSURE_THRESHOLD
             if (latestPressure >= PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD || sustainedHeavyLoad) {
+                if (physicsProbeInProgress) {
+                    failedPhysicsProbeCount++
+                    if (failedPhysicsProbeCount >= PHYSICS_FAILED_PROBES_BEFORE_COOLDOWN) {
+                        // If repeated probes remain overloaded, pausing collisions is not
+                        // fixing the bottleneck. Keep physics enabled while ball/style
+                        // adaptation does the useful work, then reassess much later.
+                        solidBodyPhysicsSuspended = false
+                        physicsProbeInProgress = false
+                        failedPhysicsProbeCount = 0
+                        physicsPauseCooldownWindows = PHYSICS_PAUSE_COOLDOWN_WINDOWS
+                        consecutivePhysicsHealthyWindows = 0
+                        return
+                    }
+                }
                 solidBodyPhysicsSuspended = true
+                physicsProbeInProgress = false
                 consecutivePhysicsRecoveryWindows = 0
+                consecutivePhysicsHealthyWindows = 0
                 physicsSuspendedWindowCount = 0
             }
             return
         }
 
         physicsSuspendedWindowCount++
+        val maximumSuspendedWindows = PHYSICS_MAX_SUSPENDED_WINDOWS shl failedPhysicsProbeCount
 
         if (latestPressure <= PHYSICS_RECOVERY_PRESSURE_THRESHOLD) {
             consecutivePhysicsRecoveryWindows++
             if (
-                physicsSuspendedWindowCount >= PHYSICS_MAX_SUSPENDED_WINDOWS ||
+                physicsSuspendedWindowCount >= maximumSuspendedWindows ||
                 (
                     consecutivePhysicsRecoveryWindows >= PHYSICS_RECOVERY_WINDOW_COUNT &&
                         responsivePressure <= PHYSICS_ROLLING_RECOVERY_THRESHOLD
                     )
             ) {
-                solidBodyPhysicsSuspended = false
-                consecutivePhysicsRecoveryWindows = 0
-                physicsSuspendedWindowCount = 0
+                startPhysicsProbe()
             }
         } else {
             consecutivePhysicsRecoveryWindows = 0
-            if (physicsSuspendedWindowCount >= PHYSICS_MAX_SUSPENDED_WINDOWS) {
-                // Briefly probe with collisions enabled. If they are still too costly,
-                // the next loaded window suspends them again instead of sticking forever.
-                solidBodyPhysicsSuspended = false
-                physicsSuspendedWindowCount = 0
+            if (physicsSuspendedWindowCount >= maximumSuspendedWindows) {
+                startPhysicsProbe()
             }
         }
+    }
+
+    private fun startPhysicsProbe() {
+        // Discard measurements gathered with collisions disabled. The fresh history and
+        // grace windows let the controller judge the cost of collisions themselves.
+        resetPerformanceHistory()
+        solidBodyPhysicsSuspended = false
+        physicsProbeInProgress = true
+        physicsResumeGraceWindows = PHYSICS_PROBE_GRACE_WINDOWS
     }
 
     private fun resetPerformanceHistory() {
@@ -361,12 +416,19 @@ internal class RuntimeBallCountController(
         totalFrameDurationNanos = 0.0
         consecutiveGoodWindows = 0
         consecutivePhysicsRecoveryWindows = 0
+        consecutivePhysicsHealthyWindows = 0
         physicsSuspendedWindowCount = 0
         performancePressureHistory.clear()
     }
 
     private fun adaptiveMinimumBallCount(): Int =
-        min(configuredBallCount, max(MIN_ADAPTIVE_BALL_COUNT, (configuredBallCount * 0.15f).roundToInt()))
+        min(
+            configuredBallCount,
+            max(
+                MIN_ADAPTIVE_BALL_COUNT,
+                min(MAX_ADAPTIVE_BALL_FLOOR, (configuredBallCount * 0.15f).roundToInt()),
+            ),
+        )
 
     private fun updateAutomaticRenderQuality(latestPressure: Float, rollingPressure: Float) {
         if (
@@ -405,6 +467,7 @@ internal class RuntimeBallCountController(
 
     private companion object {
         const val MIN_ADAPTIVE_BALL_COUNT = 4
+        const val MAX_ADAPTIVE_BALL_FLOOR = 12
         const val PERFORMANCE_HISTORY_WINDOWS = 8
         const val MIN_HISTORY_FOR_ADJUSTMENT = 2
         const val RECOVERY_WINDOW_COUNT = 2
@@ -423,6 +486,10 @@ internal class RuntimeBallCountController(
         const val PHYSICS_RECOVERY_WINDOW_COUNT = 4
         const val PHYSICS_MAX_SUSPENDED_WINDOWS = 12
         const val PHYSICS_SETTINGS_GRACE_WINDOWS = 4
+        const val PHYSICS_PROBE_GRACE_WINDOWS = 3
+        const val PHYSICS_PROBE_SUCCESS_WINDOWS = 6
+        const val PHYSICS_FAILED_PROBES_BEFORE_COOLDOWN = 1
+        const val PHYSICS_PAUSE_COOLDOWN_WINDOWS = 60
         const val AUTO_FLAT_PRESSURE_THRESHOLD = 0.20f
         const val AUTO_GLOW_PRESSURE_THRESHOLD = 0.01f
         const val AUTO_FLAT_BALL_FRACTION = 0.5f
