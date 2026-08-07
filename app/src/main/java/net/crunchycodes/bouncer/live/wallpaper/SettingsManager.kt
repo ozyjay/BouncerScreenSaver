@@ -17,8 +17,12 @@ internal class SettingsManager(context: Context) {
         const val KEY_BRIGHTNESS = "brightness"
         const val KEY_TRANSPARENCY = "transparency"
         const val KEY_BALL_STYLE = "ball_style"
+        const val KEY_PERFORMANCE_MODE = "performance_mode"
         const val KEY_PHYSICS = "physics_enabled"
         const val KEY_AUTO_DISABLE_PHYSICS = "auto_disable_physics_on_heavy_load"
+        private const val KEY_RUNTIME_BALL_COUNT = "runtime_ball_count"
+        private const val KEY_RUNTIME_RENDER_QUALITY = "runtime_render_quality"
+        private const val KEY_RUNTIME_PHYSICS_SUSPENDED = "runtime_physics_suspended"
         const val KEY_SIZE_BEHAVIOR = "size_behavior"
         const val KEY_LIFESPAN = "lifespan_base"
         const val KEY_DESTROY_ON_TOUCH = "destroy_on_touch"
@@ -70,6 +74,12 @@ internal class SettingsManager(context: Context) {
         get() = BallStyle.fromStoredValue(prefs.getString(KEY_BALL_STYLE, BallStyle.AUTO.id))
         set(value) = prefs.edit { putString(KEY_BALL_STYLE, value.id) }
 
+    var performanceMode: PerformanceMode
+        get() = PerformanceMode.fromStoredValue(
+            prefs.getString(KEY_PERFORMANCE_MODE, PerformanceMode.ADAPTIVE.id),
+        )
+        set(value) = prefs.edit { putString(KEY_PERFORMANCE_MODE, value.id) }
+
     var physicsEnabled: Boolean
         get() = prefs.getBoolean(KEY_PHYSICS, true)
         set(value) = prefs.edit { putBoolean(KEY_PHYSICS, value) }
@@ -77,6 +87,33 @@ internal class SettingsManager(context: Context) {
     var autoDisablePhysicsOnHeavyLoad: Boolean
         get() = prefs.getBoolean(KEY_AUTO_DISABLE_PHYSICS, true)
         set(value) = prefs.edit { putBoolean(KEY_AUTO_DISABLE_PHYSICS, value) }
+
+    val runtimeBallCount: Int
+        get() = prefs.getInt(KEY_RUNTIME_BALL_COUNT, ballCount)
+            .coerceIn(BouncerPhysics.MIN_BALL_COUNT, effectiveMaxBallCount())
+
+    val runtimeRenderQuality: RenderQuality
+        get() = prefs.getString(KEY_RUNTIME_RENDER_QUALITY, null)
+            ?.let { stored -> RenderQuality.entries.firstOrNull { it.name == stored } }
+            ?: DevicePerformance.renderQuality(effectiveMaxBallCount(), ballStyle)
+
+    val runtimePhysicsSuspended: Boolean
+        get() = prefs.getBoolean(KEY_RUNTIME_PHYSICS_SUSPENDED, false)
+
+    fun persistRuntimePerformanceState(
+        ballCount: Int,
+        renderQuality: RenderQuality,
+        physicsSuspended: Boolean,
+    ) {
+        prefs.edit {
+            putInt(
+                KEY_RUNTIME_BALL_COUNT,
+                ballCount.coerceIn(BouncerPhysics.MIN_BALL_COUNT, effectiveMaxBallCount()),
+            )
+            putString(KEY_RUNTIME_RENDER_QUALITY, renderQuality.name)
+            putBoolean(KEY_RUNTIME_PHYSICS_SUSPENDED, physicsSuspended)
+        }
+    }
 
     var sizeBehavior: Float
         get() = BouncerPhysics.clampSizeBehavior(

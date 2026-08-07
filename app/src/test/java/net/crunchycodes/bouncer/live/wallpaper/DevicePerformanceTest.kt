@@ -145,6 +145,41 @@ class DevicePerformanceTest {
     }
 
     @Test
+    fun collisionPauseAlwaysReturnsForAProbe() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+        controller.updateAutomaticPhysicsReduction(true)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+        assertFalse(controller.solidBodyPhysicsAllowed())
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 12) {
+            controller.recordFrame((frameBudgetNanos * 1.05f).toLong(), frameBudgetNanos)
+        }
+
+        assertTrue(controller.solidBodyPhysicsAllowed())
+    }
+
+    @Test
+    fun fixedModeHonoursConfiguredCountUnderLoad() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(60, 100, RenderQuality.Glow)
+        controller.updateAdaptivePerformance(false)
+        controller.updateAutomaticPhysicsReduction(true)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 20) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+        controller.updateConfiguredBallCount(80)
+
+        assertEquals(80, controller.activeBallCount())
+        assertEquals(RenderQuality.Glow, controller.renderQuality())
+        assertTrue(controller.solidBodyPhysicsAllowed())
+    }
+
+    @Test
     fun runtimeControllerKeepsGlowAfterOverloadAndRecovery() {
         val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
         val controller = RuntimeBallCountController(

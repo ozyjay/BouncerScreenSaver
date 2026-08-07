@@ -134,6 +134,7 @@ internal class RuntimeBallCountController(
     private var activeBallCount = this.configuredBallCount
     private var preferredRenderQuality = initialRenderQuality
     private var currentRenderQuality = initialRenderQuality
+    private var adaptivePerformanceEnabled = true
     private var automaticStyleChanges = false
     private var automaticPhysicsReduction = false
     private var solidBodyPhysicsSuspended = false
@@ -142,6 +143,7 @@ internal class RuntimeBallCountController(
     private var totalFrameDurationNanos = 0.0
     private var consecutiveGoodWindows = 0
     private var consecutivePhysicsRecoveryWindows = 0
+    private var physicsSuspendedWindowCount = 0
     private val performancePressureHistory = ArrayDeque<Float>(PERFORMANCE_HISTORY_WINDOWS)
 
     fun activeBallCount(): Int = activeBallCount
@@ -150,16 +152,32 @@ internal class RuntimeBallCountController(
 
     fun solidBodyPhysicsAllowed(): Boolean = !solidBodyPhysicsSuspended
 
+    fun updateAdaptivePerformance(enabled: Boolean) {
+        if (adaptivePerformanceEnabled == enabled) return
+        adaptivePerformanceEnabled = enabled
+        resetPerformanceHistory()
+        if (!enabled) {
+            activeBallCount = configuredBallCount
+            currentRenderQuality = preferredRenderQuality
+            solidBodyPhysicsSuspended = false
+        }
+    }
+
     fun updateAutomaticPhysicsReduction(enabled: Boolean) {
         if (automaticPhysicsReduction == enabled) return
         automaticPhysicsReduction = enabled
         consecutivePhysicsRecoveryWindows = 0
+        physicsSuspendedWindowCount = 0
         if (!enabled) solidBodyPhysicsSuspended = false
     }
 
     fun updateConfiguredBallCount(value: Int) {
         configuredBallCount = clamp(value)
-        activeBallCount = min(activeBallCount, configuredBallCount)
+        activeBallCount = if (adaptivePerformanceEnabled) {
+            min(activeBallCount, configuredBallCount)
+        } else {
+            configuredBallCount
+        }
     }
 
     fun updatePreferredRenderQuality(
@@ -177,16 +195,13 @@ internal class RuntimeBallCountController(
         preferredRenderQuality = value
         currentRenderQuality = value
         automaticStyleChanges = allowAutomaticStyleChanges
-        frameCounter = 0
-        badFrames = 0
-        totalFrameDurationNanos = 0.0
-        consecutiveGoodWindows = 0
-        consecutivePhysicsRecoveryWindows = 0
+        resetPerformanceHistory()
         solidBodyPhysicsSuspended = false
-        performancePressureHistory.clear()
     }
 
     fun recordFrame(frameDurationNanos: Long, frameBudgetNanos: Long): Int {
+        if (!adaptivePerformanceEnabled) return activeBallCount
+
         val badFrameThreshold = (frameBudgetNanos * 1.1f).roundToInt().toLong()
         frameCounter++
         totalFrameDurationNanos += frameDurationNanos.coerceAtLeast(0L).toDouble()
@@ -292,22 +307,45 @@ internal class RuntimeBallCountController(
             if (latestPressure >= PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD || sustainedHeavyLoad) {
                 solidBodyPhysicsSuspended = true
                 consecutivePhysicsRecoveryWindows = 0
+                physicsSuspendedWindowCount = 0
             }
             return
         }
 
+        physicsSuspendedWindowCount++
+
         if (latestPressure <= PHYSICS_RECOVERY_PRESSURE_THRESHOLD) {
             consecutivePhysicsRecoveryWindows++
             if (
-                consecutivePhysicsRecoveryWindows >= PHYSICS_RECOVERY_WINDOW_COUNT &&
-                responsivePressure <= PHYSICS_ROLLING_RECOVERY_THRESHOLD
+                physicsSuspendedWindowCount >= PHYSICS_MAX_SUSPENDED_WINDOWS ||
+                (
+                    consecutivePhysicsRecoveryWindows >= PHYSICS_RECOVERY_WINDOW_COUNT &&
+                        responsivePressure <= PHYSICS_ROLLING_RECOVERY_THRESHOLD
+                    )
             ) {
                 solidBodyPhysicsSuspended = false
                 consecutivePhysicsRecoveryWindows = 0
+                physicsSuspendedWindowCount = 0
             }
         } else {
             consecutivePhysicsRecoveryWindows = 0
+            if (physicsSuspendedWindowCount >= PHYSICS_MAX_SUSPENDED_WINDOWS) {
+                // Briefly probe with collisions enabled. If they are still too costly,
+                // the next loaded window suspends them again instead of sticking forever.
+                solidBodyPhysicsSuspended = false
+                physicsSuspendedWindowCount = 0
+            }
         }
+    }
+
+    private fun resetPerformanceHistory() {
+        frameCounter = 0
+        badFrames = 0
+        totalFrameDurationNanos = 0.0
+        consecutiveGoodWindows = 0
+        consecutivePhysicsRecoveryWindows = 0
+        physicsSuspendedWindowCount = 0
+        performancePressureHistory.clear()
     }
 
     private fun adaptiveMinimumBallCount(): Int =
@@ -363,9 +401,10 @@ internal class RuntimeBallCountController(
         const val SEVERE_PRESSURE_THRESHOLD = 0.22f
         const val PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD = 0.45f
         const val PHYSICS_SUSPEND_PRESSURE_THRESHOLD = 0.24f
-        const val PHYSICS_RECOVERY_PRESSURE_THRESHOLD = 0.02f
-        const val PHYSICS_ROLLING_RECOVERY_THRESHOLD = 0.04f
+        const val PHYSICS_RECOVERY_PRESSURE_THRESHOLD = 0.04f
+        const val PHYSICS_ROLLING_RECOVERY_THRESHOLD = 0.08f
         const val PHYSICS_RECOVERY_WINDOW_COUNT = 4
+        const val PHYSICS_MAX_SUSPENDED_WINDOWS = 12
         const val AUTO_FLAT_PRESSURE_THRESHOLD = 0.20f
         const val AUTO_GLOW_PRESSURE_THRESHOLD = 0.01f
         const val AUTO_FLAT_BALL_FRACTION = 0.5f

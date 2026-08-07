@@ -70,6 +70,9 @@ class BouncerWallpaperService : WallpaperService() {
         @Volatile
         private var currentBallStyle = BallStyle.AUTO
 
+        @Volatile
+        private var performanceMode = PerformanceMode.ADAPTIVE
+
         private val appearanceRevision = AtomicLong(0L)
 
         @Volatile
@@ -299,6 +302,9 @@ class BouncerWallpaperService : WallpaperService() {
             if (changedKey == null || changedKey == SettingsManager.KEY_BALL_STYLE) {
                 currentBallStyle = settings.ballStyle
             }
+            if (changedKey == null || changedKey == SettingsManager.KEY_PERFORMANCE_MODE) {
+                performanceMode = settings.performanceMode
+            }
             if (changedKey == null || changedKey == SettingsManager.KEY_PHYSICS) {
                 physicsEnabled = settings.physicsEnabled
             }
@@ -337,6 +343,9 @@ class BouncerWallpaperService : WallpaperService() {
             private var collisionNext = IntArray(0)
             private var activeBallIndices = IntArray(0)
             private var appliedAppearanceRevision = -1L
+            private var reportedRuntimeBallCount = -1
+            private var reportedRenderQuality: RenderQuality? = null
+            private var reportedPhysicsSuspended: Boolean? = null
 
             init {
                 // Build the glow sprite once per render thread and reuse it for every ball.
@@ -373,13 +382,16 @@ class BouncerWallpaperService : WallpaperService() {
                         lastFrameNanos = frameStartNanos
                         runtimeBallController.updateConfiguredBallCount(targetBallCount)
                         val requestedBallStyle = currentBallStyle
+                        val adaptivePerformance = performanceMode == PerformanceMode.ADAPTIVE
+                        runtimeBallController.updateAdaptivePerformance(adaptivePerformance)
                         runtimeBallController.updatePreferredRenderQuality(
                             value = DevicePerformance.renderQuality(deviceMaxBallCount, requestedBallStyle),
-                            allowAutomaticStyleChanges = requestedBallStyle == BallStyle.AUTO,
+                            allowAutomaticStyleChanges =
+                                adaptivePerformance && requestedBallStyle == BallStyle.AUTO,
                             force = requestedBallStyle != appliedBallStyle,
                         )
                         runtimeBallController.updateAutomaticPhysicsReduction(
-                            autoDisablePhysicsOnHeavyLoad,
+                            adaptivePerformance && autoDisablePhysicsOnHeavyLoad,
                         )
                         appliedBallStyle = requestedBallStyle
                         refreshBallAppearanceIfNeeded()
@@ -420,6 +432,7 @@ class BouncerWallpaperService : WallpaperService() {
 
                         val frameDurationNanos = SystemClock.elapsedRealtimeNanos() - frameStartNanos
                         runtimeBallController.recordFrame(frameDurationNanos, targetFrameIntervalNanos)
+                        reportRuntimePerformanceIfChanged(runtimeBallController)
                         val remainingFrameNanos = targetFrameIntervalNanos - frameDurationNanos
                         if (remainingFrameNanos > 0L) {
                             sleep(
@@ -723,6 +736,24 @@ class BouncerWallpaperService : WallpaperService() {
                     ?.getDisplay(Display.DEFAULT_DISPLAY)
                     ?.refreshRate
                 return DevicePerformance.normalizeRefreshRateHz(displayRefreshRate ?: calibrationRefreshRate)
+            }
+
+            private fun reportRuntimePerformanceIfChanged(controller: RuntimeBallCountController) {
+                val ballCount = controller.activeBallCount()
+                val quality = controller.renderQuality()
+                val physicsSuspended = !controller.solidBodyPhysicsAllowed()
+                if (
+                    ballCount == reportedRuntimeBallCount &&
+                    quality == reportedRenderQuality &&
+                    physicsSuspended == reportedPhysicsSuspended
+                ) {
+                    return
+                }
+
+                reportedRuntimeBallCount = ballCount
+                reportedRenderQuality = quality
+                reportedPhysicsSuspended = physicsSuspended
+                settings.persistRuntimePerformanceState(ballCount, quality, physicsSuspended)
             }
         }
 

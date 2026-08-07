@@ -79,6 +79,10 @@ class SettingsActivity : ComponentActivity() {
                 ballSpeed = settings.ballSpeed,
                 selectedPalette = settings.palette,
                 selectedBallStyle = settings.ballStyle,
+                performanceMode = settings.performanceMode,
+                runtimeBallCount = settings.runtimeBallCount,
+                runtimeRenderQuality = settings.runtimeRenderQuality,
+                runtimePhysicsSuspended = settings.runtimePhysicsSuspended,
                 brightness = settings.brightness,
                 transparency = settings.transparency,
                 physicsEnabled = settings.physicsEnabled,
@@ -106,6 +110,7 @@ class SettingsActivity : ComponentActivity() {
             onLifespanBaseChangeFinished = { settings.lifespanBase = it },
             onPaletteSelected = { settings.palette = it },
             onBallStyleSelected = { settings.ballStyle = it },
+            onPerformanceModeSelected = { settings.performanceMode = it },
             onBrightnessChangeFinished = { settings.brightness = it },
             onTransparencyChangeFinished = { settings.transparency = it },
         )
@@ -127,6 +132,7 @@ class SettingsActivity : ComponentActivity() {
         onLifespanBaseChangeFinished: (Float) -> Unit,
         onPaletteSelected: (ColorPalette) -> Unit,
         onBallStyleSelected: (BallStyle) -> Unit,
+        onPerformanceModeSelected: (PerformanceMode) -> Unit,
         onBrightnessChangeFinished: (Float) -> Unit,
         onTransparencyChangeFinished: (Float) -> Unit,
     ) {
@@ -136,6 +142,7 @@ class SettingsActivity : ComponentActivity() {
         var ballSpeed by remember { mutableFloatStateOf(initialState.ballSpeed) }
         var selectedPalette by remember { mutableStateOf(initialState.selectedPalette) }
         var selectedBallStyle by remember { mutableStateOf(initialState.selectedBallStyle) }
+        var performanceMode by remember { mutableStateOf(initialState.performanceMode) }
         var brightness by remember { mutableFloatStateOf(initialState.brightness) }
         var transparency by remember { mutableFloatStateOf(initialState.transparency) }
         var physicsEnabled by remember { mutableStateOf(initialState.physicsEnabled) }
@@ -347,6 +354,52 @@ class SettingsActivity : ComponentActivity() {
                         expandedSection = expandedSection.toggle(SettingsSection.PERFORMANCE)
                     },
                 ) {
+                    Text(text = stringResource(R.string.performance_mode))
+                    androidx.compose.foundation.layout.FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        PerformanceMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = performanceMode == mode,
+                                onClick = {
+                                    performanceMode = mode
+                                    onPerformanceModeSelected(mode)
+                                },
+                                label = { Text(stringResource(mode.labelRes)) },
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(performanceMode.descriptionRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (performanceMode == PerformanceMode.ADAPTIVE) {
+                        val runtimeStyle = stringResource(
+                            when (initialState.runtimeRenderQuality) {
+                                RenderQuality.Glow -> R.string.ball_style_glow
+                                RenderQuality.Flat -> R.string.ball_style_flat
+                            },
+                        )
+                        val collisionState = stringResource(
+                            when {
+                                !physicsEnabled -> R.string.collision_state_off
+                                initialState.runtimePhysicsSuspended -> R.string.collision_state_paused
+                                else -> R.string.collision_state_active
+                            },
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.current_adaptive_output,
+                                initialState.runtimeBallCount,
+                                runtimeStyle,
+                                collisionState,
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = stringResource(
                             R.string.calibrated_device_cap,
@@ -465,6 +518,10 @@ class SettingsActivity : ComponentActivity() {
                         ballSpeed = 4.5f,
                         selectedPalette = ColorPalette.NEON,
                         selectedBallStyle = BallStyle.AUTO,
+                        performanceMode = PerformanceMode.ADAPTIVE,
+                        runtimeBallCount = 32,
+                        runtimeRenderQuality = RenderQuality.Glow,
+                        runtimePhysicsSuspended = false,
                         brightness = BallAppearance.DEFAULT_BRIGHTNESS,
                         transparency = BallAppearance.DEFAULT_TRANSPARENCY,
                         physicsEnabled = true,
@@ -488,6 +545,7 @@ class SettingsActivity : ComponentActivity() {
                     onLifespanBaseChangeFinished = {},
                     onPaletteSelected = {},
                     onBallStyleSelected = {},
+                    onPerformanceModeSelected = {},
                     onBrightnessChangeFinished = {},
                     onTransparencyChangeFinished = {},
                 )
@@ -500,6 +558,10 @@ class SettingsActivity : ComponentActivity() {
         val ballSpeed: Float,
         val selectedPalette: ColorPalette,
         val selectedBallStyle: BallStyle,
+        val performanceMode: PerformanceMode,
+        val runtimeBallCount: Int,
+        val runtimeRenderQuality: RenderQuality,
+        val runtimePhysicsSuspended: Boolean,
         val brightness: Float,
         val transparency: Float,
         val physicsEnabled: Boolean,

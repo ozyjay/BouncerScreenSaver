@@ -93,6 +93,26 @@ class SettingsManagerTest {
     }
 
     @Test
+    fun performanceModePersistsAsStableIdentifier() {
+        settingsManager.performanceMode = PerformanceMode.FIXED
+
+        assertEquals(PerformanceMode.FIXED, settingsManager.performanceMode)
+    }
+
+    @Test
+    fun runtimePerformanceStatePersistsForSettingsSummary() {
+        settingsManager.persistRuntimePerformanceState(
+            ballCount = 42,
+            renderQuality = RenderQuality.Flat,
+            physicsSuspended = true,
+        )
+
+        assertEquals(42, settingsManager.runtimeBallCount)
+        assertEquals(RenderQuality.Flat, settingsManager.runtimeRenderQuality)
+        assertTrue(settingsManager.runtimePhysicsSuspended)
+    }
+
+    @Test
     fun unknownBallStyleFallsBackToAuto() {
         appContext.getSharedPreferences("bouncer_prefs", Context.MODE_PRIVATE)
             .edit()
