@@ -62,6 +62,14 @@ class BouncerWallpaperService : WallpaperService() {
         private var currentPalette = ColorPalette.RANDOM
 
         @Volatile
+        private var brightness = BallAppearance.DEFAULT_BRIGHTNESS
+
+        @Volatile
+        private var transparency = BallAppearance.DEFAULT_TRANSPARENCY
+
+        private val appearanceRevision = AtomicLong(0L)
+
+        @Volatile
         private var physicsEnabled = true
 
         @Volatile
@@ -259,6 +267,7 @@ class BouncerWallpaperService : WallpaperService() {
         }
 
         private fun applySettings(changedKey: String?) {
+            var recolorBalls = false
             if (changedKey == null || changedKey == SettingsManager.KEY_BALL_COUNT) {
                 targetBallCount = settings.ballCount
             }
@@ -267,6 +276,14 @@ class BouncerWallpaperService : WallpaperService() {
             }
             if (changedKey == null || changedKey == SettingsManager.KEY_PALETTE) {
                 currentPalette = settings.palette
+                recolorBalls = true
+            }
+            if (changedKey == null || changedKey == SettingsManager.KEY_BRIGHTNESS) {
+                brightness = settings.brightness
+                recolorBalls = true
+            }
+            if (changedKey == null || changedKey == SettingsManager.KEY_TRANSPARENCY) {
+                transparency = settings.transparency
             }
             if (changedKey == null || changedKey == SettingsManager.KEY_PHYSICS) {
                 physicsEnabled = settings.physicsEnabled
@@ -279,6 +296,9 @@ class BouncerWallpaperService : WallpaperService() {
             }
             if (changedKey == null || changedKey == SettingsManager.KEY_DESTROY_ON_TOUCH) {
                 destroyOnTouch = settings.destroyOnTouch
+            }
+            if (recolorBalls) {
+                appearanceRevision.incrementAndGet()
             }
         }
 
@@ -299,6 +319,7 @@ class BouncerWallpaperService : WallpaperService() {
             private var collisionHeads = IntArray(0)
             private var collisionNext = IntArray(0)
             private var activeBallIndices = IntArray(0)
+            private var appliedAppearanceRevision = -1L
 
             init {
                 // Build the glow sprite once per render thread and reuse it for every ball.
@@ -337,6 +358,7 @@ class BouncerWallpaperService : WallpaperService() {
                             .coerceIn(0f, MAX_DELTA_SECONDS)
                         lastFrameNanos = frameStartNanos
                         runtimeBallController.updateConfiguredBallCount(targetBallCount)
+                        refreshBallAppearanceIfNeeded()
 
                         var canvas: Canvas? = null
                         try {
@@ -402,8 +424,9 @@ class BouncerWallpaperService : WallpaperService() {
 
             private fun drawFrame(canvas: Canvas, quality: RenderQuality) {
                 canvas.drawColor(Color.BLACK)
+                val opacity = BallAppearance.opacityForTransparency(transparency)
                 for (ball in simulationState.balls) {
-                    val alpha = (ball.alpha * 255).toInt().coerceIn(0, 255)
+                    val alpha = (ball.alpha * opacity * 255).toInt().coerceIn(0, 255)
                     if (alpha <= 0) continue
                     if (quality == RenderQuality.Glow) {
                         glowPaint.colorFilter = ball.colorFilter ?: PorterDuffColorFilter(
@@ -425,6 +448,20 @@ class BouncerWallpaperService : WallpaperService() {
                         canvas.drawCircle(ball.x, ball.y, ball.radius, ballPaint)
                     }
                 }
+            }
+
+            private fun refreshBallAppearanceIfNeeded() {
+                val requestedRevision = appearanceRevision.get()
+                if (requestedRevision == appliedAppearanceRevision) return
+
+                for (ball in simulationState.balls) {
+                    ball.color = BallAppearance.adjustBrightness(
+                        currentPalette.randomColor(randomSource),
+                        brightness,
+                    )
+                    ball.colorFilter = null
+                }
+                appliedAppearanceRevision = requestedRevision
             }
 
             private fun updateState(width: Int, height: Int, deltaTime: Float, desiredBallCount: Int) {
@@ -621,7 +658,10 @@ class BouncerWallpaperService : WallpaperService() {
                 val speed = randomSource.nextFloat() * baseSpeed + (baseSpeed / 2f)
                 val angle = randomSource.nextFloat() * 2f * PI.toFloat()
                 val sizeVariability = randomSource.nextFloat() * 0.8f + 0.6f
-                val color = currentPalette.randomColor(randomSource)
+                val color = BallAppearance.adjustBrightness(
+                    currentPalette.randomColor(randomSource),
+                    brightness,
+                )
                 val ball = simulationState.obtainBall()
                 ball.prepareForReuse(
                     x = randomSource.nextFloat() * (width - 2f * initialRadius) + initialRadius,

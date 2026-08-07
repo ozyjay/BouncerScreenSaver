@@ -14,6 +14,8 @@ internal class SettingsManager(context: Context) {
         const val KEY_BALL_COUNT = "ball_count"
         const val KEY_BALL_SPEED = "ball_speed"
         const val KEY_PALETTE = "palette"
+        const val KEY_BRIGHTNESS = "brightness"
+        const val KEY_TRANSPARENCY = "transparency"
         const val KEY_PHYSICS = "physics_enabled"
         const val KEY_SIZE_BEHAVIOR = "size_behavior"
         const val KEY_LIFESPAN = "lifespan_base"
@@ -45,6 +47,22 @@ internal class SettingsManager(context: Context) {
     var palette: ColorPalette
         get() = ColorPalette.fromStoredValue(prefs.getString(KEY_PALETTE, ColorPalette.RANDOM.id))
         set(value) = prefs.edit { putString(KEY_PALETTE, value.id) }
+
+    var brightness: Float
+        get() = BallAppearance.clampBrightness(
+            prefs.getFloat(KEY_BRIGHTNESS, BallAppearance.DEFAULT_BRIGHTNESS),
+        )
+        set(value) = prefs.edit {
+            putFloat(KEY_BRIGHTNESS, BallAppearance.clampBrightness(value))
+        }
+
+    var transparency: Float
+        get() = BallAppearance.clampTransparency(
+            prefs.getFloat(KEY_TRANSPARENCY, BallAppearance.DEFAULT_TRANSPARENCY),
+        )
+        set(value) = prefs.edit {
+            putFloat(KEY_TRANSPARENCY, BallAppearance.clampTransparency(value))
+        }
 
     var physicsEnabled: Boolean
         get() = prefs.getBoolean(KEY_PHYSICS, true)

@@ -2,8 +2,10 @@ package net.crunchycodes.bouncer.live.wallpaper
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.lifecycle.Lifecycle
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 
@@ -20,5 +22,20 @@ class SettingsActivityTest {
         composeTestRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
 
         composeTestRule.onNodeWithText("Bouncer Settings").assertExists()
+    }
+
+    @Test
+    fun appearanceControlsAreDisplayed() {
+        composeTestRule.onNodeWithText("Brightness:", substring = true).assertExists()
+        composeTestRule.onNodeWithText("Transparency:", substring = true).assertExists()
+    }
+
+    @Test
+    fun doneKeepsSettingsActivityInTask() {
+        val activity = composeTestRule.activity
+
+        composeTestRule.onNodeWithText("Done").performClick()
+
+        assertFalse(activity.isFinishing)
     }
 }

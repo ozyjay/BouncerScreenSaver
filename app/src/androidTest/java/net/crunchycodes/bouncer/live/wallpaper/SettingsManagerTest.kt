@@ -76,6 +76,15 @@ class SettingsManagerTest {
     }
 
     @Test
+    fun appearanceLevelsPersistAndClamp() {
+        settingsManager.brightness = 5f
+        settingsManager.transparency = -1f
+
+        assertEquals(BallAppearance.MAX_BRIGHTNESS, settingsManager.brightness, 0f)
+        assertEquals(BallAppearance.MIN_TRANSPARENCY, settingsManager.transparency, 0f)
+    }
+
+    @Test
     fun booleansPersist() {
         settingsManager.physicsEnabled = false
         settingsManager.destroyOnTouch = true

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -48,6 +49,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -75,6 +77,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.crunchycodes.bouncer.live.wallpaper.ui.theme.BouncerScreenSaverTheme
 import kotlin.math.PI
 import kotlin.math.cos
@@ -105,6 +110,9 @@ class MainActivity : ComponentActivity() {
         val refreshRateHz = remember(context) { detectRefreshRateHz(context) }
         val frameIntervalNanos = remember(refreshRateHz) { DevicePerformance.frameBudgetNanos(refreshRateHz) }
         var showApplyWallpaper by remember { mutableStateOf(!isBouncerWallpaperApplied(context)) }
+        var showRemoveConfirmation by remember { mutableStateOf(false) }
+        var showRemovalError by remember { mutableStateOf(false) }
+        val coroutineScope = rememberCoroutineScope()
         var calibrationComplete by remember { mutableStateOf(settings.hasCompletedCalibration) }
         val calibrationController = remember(refreshRateHz, calibrationComplete) {
             if (calibrationComplete) null else LandingCalibrationController(refreshRateHz)
@@ -129,6 +137,47 @@ class MainActivity : ComponentActivity() {
             BouncerPhysics.MAX_BALL_COUNT
         } else {
             LauncherSimulation.MAX_DASHBOARD_BALL_COUNT
+        }
+
+        if (showRemoveConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showRemoveConfirmation = false },
+                title = { Text(stringResource(R.string.remove_wallpaper_title)) },
+                text = { Text(stringResource(R.string.remove_wallpaper_message)) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showRemoveConfirmation = false
+                            coroutineScope.launch {
+                                val removed = withContext(Dispatchers.IO) {
+                                    removeBouncerWallpaper(context)
+                                }
+                                showApplyWallpaper = !isBouncerWallpaperApplied(context)
+                                showRemovalError = !removed || !showApplyWallpaper
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.remove))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRemoveConfirmation = false }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                },
+            )
+        }
+
+        if (showRemovalError) {
+            AlertDialog(
+                onDismissRequest = { showRemovalError = false },
+                text = { Text(stringResource(R.string.remove_wallpaper_failed)) },
+                confirmButton = {
+                    TextButton(onClick = { showRemovalError = false }) {
+                        Text(stringResource(R.string.dismiss))
+                    }
+                },
+            )
         }
 
         Box(
@@ -258,6 +307,23 @@ class MainActivity : ComponentActivity() {
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 2.sp,
                             )
+                        }
+
+                        if (!showApplyWallpaper) {
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            OutlinedButton(
+                                onClick = { showRemoveConfirmation = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.remove_wallpaper),
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -426,12 +492,13 @@ class MainActivity : ComponentActivity() {
 
             drawIntoCanvas { canvas ->
                 val useGlow = balls.size <= LauncherSimulation.GLOW_RENDER_THRESHOLD
+                val opacity = BallAppearance.opacityForTransparency(simulationSettings.transparency)
                 for (ball in balls) {
                     if (useGlow) {
                         glowPaint.colorFilter = colorFilters.getOrPut(ball.color.toArgb()) {
                             PorterDuffColorFilter(ball.color.toArgb(), PorterDuff.Mode.SRC_IN)
                         }
-                        glowPaint.alpha = 160
+                        glowPaint.alpha = (160 * opacity).roundToInt()
                         glowRect.set(
                             ball.x - ball.radius * 1.6f,
                             ball.y - ball.radius * 1.6f,
@@ -441,10 +508,16 @@ class MainActivity : ComponentActivity() {
                         canvas.nativeCanvas.drawBitmap(glowBitmap, null, glowRect, glowPaint)
                     } else {
                         ballPaint.color = ball.color.toArgb()
-                        ballPaint.alpha = 112
+                        ballPaint.alpha = (112 * opacity).roundToInt()
                         canvas.nativeCanvas.drawCircle(ball.x, ball.y, ball.radius, ballPaint)
                     }
                 }
+            }
+        }
+
+        LaunchedEffect(simulationSettings.palette, simulationSettings.brightness) {
+            balls.forEach { ball ->
+                ball.color = dashboardBallColor(simulationSettings)
             }
         }
 
@@ -547,6 +620,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun removeBouncerWallpaper(context: Context): Boolean = try {
+        val wallpaperManager = WallpaperManager.getInstance(context)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            wallpaperManager.clear(WallpaperManager.FLAG_SYSTEM)
+        } else {
+            @Suppress("DEPRECATION")
+            wallpaperManager.clear()
+        }
+        true
+    } catch (error: Exception) {
+        Log.e("MainActivity", "Unable to remove Bouncer wallpaper", error)
+        false
+    }
+
     private fun createUiBall(
         width: Float,
         height: Float,
@@ -561,9 +648,17 @@ class MainActivity : ComponentActivity() {
             dx = cos(angle) * speed,
             dy = sin(angle) * speed,
             radius = radius,
-            color = Color(settings.palette.randomColor(DashboardRandomSource)).copy(alpha = 0.5f),
+            color = dashboardBallColor(settings),
         )
     }
+
+    private fun dashboardBallColor(settings: DashboardSimulationSettings): Color =
+        Color(
+            BallAppearance.adjustBrightness(
+                settings.palette.randomColor(DashboardRandomSource),
+                settings.brightness,
+            ),
+        )
 
     private fun detectRefreshRateHz(context: Context): Float =
         DevicePerformance.normalizeRefreshRateHz(
@@ -585,12 +680,16 @@ class MainActivity : ComponentActivity() {
             ballCount = LauncherSimulation.clampDashboardBallCount(ballCount),
             ballSpeed = ballSpeed,
             palette = palette,
+            brightness = brightness,
+            transparency = transparency,
         )
 
     private data class DashboardSimulationSettings(
         val ballCount: Int,
         val ballSpeed: Float,
         val palette: ColorPalette,
+        val brightness: Float,
+        val transparency: Float,
     )
 
     private class LandingCalibrationController(
@@ -674,6 +773,8 @@ class MainActivity : ComponentActivity() {
             SettingsManager.KEY_BALL_COUNT,
             SettingsManager.KEY_BALL_SPEED,
             SettingsManager.KEY_PALETTE,
+            SettingsManager.KEY_BRIGHTNESS,
+            SettingsManager.KEY_TRANSPARENCY,
         )
 
         val DashboardRandomSource = object : RandomSource {

@@ -8,7 +8,7 @@ internal data class LauncherBall(
     var dx: Float,
     var dy: Float,
     val radius: Float,
-    val color: Color,
+    var color: Color,
 )
 
 internal object LauncherSimulation {

@@ -7,6 +7,13 @@
     <string name="wallpaper_inactive_title">Wallpaper Not Active</string>
     <string name="wallpaper_inactive_body">Bouncer is not currently active. Apply it to use the live wallpaper.</string>
     <string name="set_wallpaper">Apply Wallpaper</string>
+    <string name="remove_wallpaper">Remove Bouncer Wallpaper</string>
+    <string name="remove_wallpaper_title">Remove Bouncer wallpaper?</string>
+    <string name="remove_wallpaper_message">Your device’s default wallpaper will replace Bouncer.</string>
+    <string name="remove">Remove</string>
+    <string name="cancel">Cancel</string>
+    <string name="remove_wallpaper_failed">Bouncer couldn’t remove the wallpaper. Please choose another wallpaper in system settings.</string>
+    <string name="dismiss">Dismiss</string>
     <string name="customize">Customize</string>
     <string name="open_settings">Open settings</string>
     <string name="settings_title">Bouncer Settings</string>
@@ -23,6 +30,8 @@
     <string name="size_behavior_static">Static Size</string>
     <string name="lifespan_label">Avg Lifespan: %1$ds</string>
     <string name="color_palette">Color Palette</string>
+    <string name="brightness_level">Brightness: %1$d%%</string>
+    <string name="transparency_level">Transparency: %1$d%%</string>
     <string name="wallpaper_service_label">Bouncer Wallpaper</string>
     <string name="wallpaper_settings_label">Bouncer Settings</string>
     <string name="wallpaper_description">Bouncer live wallpaper</string>

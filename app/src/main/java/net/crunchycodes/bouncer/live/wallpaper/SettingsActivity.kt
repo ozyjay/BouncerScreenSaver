@@ -72,6 +72,8 @@ class SettingsActivity : ComponentActivity() {
                 ballCount = settings.ballCount.toFloat(),
                 ballSpeed = settings.ballSpeed,
                 selectedPalette = settings.palette,
+                brightness = settings.brightness,
+                transparency = settings.transparency,
                 physicsEnabled = settings.physicsEnabled,
                 sizeBehavior = settings.sizeBehavior,
                 lifespanBase = settings.lifespanBase,
@@ -81,7 +83,7 @@ class SettingsActivity : ComponentActivity() {
                 detectedRefreshRateHz = settings.calibrationRefreshRateHz.roundToInt(),
             ),
             onBack = { finish() },
-            onDone = { finishAffinity() },
+            onDone = { moveTaskToBack(true) },
             onPhysicsEnabledChange = { settings.physicsEnabled = it },
             onDestroyOnTouchChange = { settings.destroyOnTouch = it },
             onBallCountChangeFinished = { settings.ballCount = it.toInt() },
@@ -94,6 +96,8 @@ class SettingsActivity : ComponentActivity() {
             onSizeBehaviorChangeFinished = { settings.sizeBehavior = it },
             onLifespanBaseChangeFinished = { settings.lifespanBase = it },
             onPaletteSelected = { settings.palette = it },
+            onBrightnessChangeFinished = { settings.brightness = it },
+            onTransparencyChangeFinished = { settings.transparency = it },
         )
     }
 
@@ -111,12 +115,16 @@ class SettingsActivity : ComponentActivity() {
         onSizeBehaviorChangeFinished: (Float) -> Unit,
         onLifespanBaseChangeFinished: (Float) -> Unit,
         onPaletteSelected: (ColorPalette) -> Unit,
+        onBrightnessChangeFinished: (Float) -> Unit,
+        onTransparencyChangeFinished: (Float) -> Unit,
     ) {
         // Keep slider state local while dragging so the UI stays responsive; persist only
         // when the gesture completes to avoid writing preferences on every frame.
         var ballCount by remember { mutableFloatStateOf(initialState.ballCount) }
         var ballSpeed by remember { mutableFloatStateOf(initialState.ballSpeed) }
         var selectedPalette by remember { mutableStateOf(initialState.selectedPalette) }
+        var brightness by remember { mutableFloatStateOf(initialState.brightness) }
+        var transparency by remember { mutableFloatStateOf(initialState.transparency) }
         var physicsEnabled by remember { mutableStateOf(initialState.physicsEnabled) }
         var sizeBehavior by remember { mutableFloatStateOf(initialState.sizeBehavior) }
         var lifespanBase by remember { mutableFloatStateOf(initialState.lifespanBase) }
@@ -285,6 +293,38 @@ class SettingsActivity : ComponentActivity() {
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = stringResource(
+                        R.string.brightness_level,
+                        (brightness * 100f).roundToInt(),
+                    ),
+                )
+                Slider(
+                    value = brightness,
+                    onValueChange = { brightness = it },
+                    onValueChangeFinished = { onBrightnessChangeFinished(brightness) },
+                    valueRange = BallAppearance.MIN_BRIGHTNESS..BallAppearance.MAX_BRIGHTNESS,
+                    modifier = sliderModifier,
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = stringResource(
+                        R.string.transparency_level,
+                        (transparency * 100f).roundToInt(),
+                    ),
+                )
+                Slider(
+                    value = transparency,
+                    onValueChange = { transparency = it },
+                    onValueChangeFinished = { onTransparencyChangeFinished(transparency) },
+                    valueRange = BallAppearance.MIN_TRANSPARENCY..BallAppearance.MAX_TRANSPARENCY,
+                    modifier = sliderModifier,
+                )
             }
         }
     }
@@ -302,6 +342,8 @@ class SettingsActivity : ComponentActivity() {
                         ballCount = 36f,
                         ballSpeed = 4.5f,
                         selectedPalette = ColorPalette.NEON,
+                        brightness = BallAppearance.DEFAULT_BRIGHTNESS,
+                        transparency = BallAppearance.DEFAULT_TRANSPARENCY,
                         physicsEnabled = true,
                         sizeBehavior = -0.5f,
                         lifespanBase = 15f,
@@ -320,6 +362,8 @@ class SettingsActivity : ComponentActivity() {
                     onSizeBehaviorChangeFinished = {},
                     onLifespanBaseChangeFinished = {},
                     onPaletteSelected = {},
+                    onBrightnessChangeFinished = {},
+                    onTransparencyChangeFinished = {},
                 )
             }
         }
@@ -329,6 +373,8 @@ class SettingsActivity : ComponentActivity() {
         val ballCount: Float,
         val ballSpeed: Float,
         val selectedPalette: ColorPalette,
+        val brightness: Float,
+        val transparency: Float,
         val physicsEnabled: Boolean,
         val sizeBehavior: Float,
         val lifespanBase: Float,
