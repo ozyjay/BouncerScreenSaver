@@ -41,6 +41,16 @@
     <string name="collision_state_active">active</string>
     <string name="collision_state_paused">paused</string>
     <string name="collision_state_off">off</string>
+    <string name="current_performance_phase">Adaptive state: %1$s</string>
+    <string name="performance_phase_fixed">Fixed</string>
+    <string name="performance_phase_observing">Observing</string>
+    <string name="performance_phase_reducing">Reducing balls</string>
+    <string name="performance_phase_stable">Stable</string>
+    <string name="performance_phase_restoring">Restoring balls</string>
+    <string name="performance_phase_settings_grace">Applying settings</string>
+    <string name="performance_phase_physics_paused">Physics paused</string>
+    <string name="performance_phase_testing_physics">Testing physics</string>
+    <string name="performance_phase_physics_cooldown">Physics cooldown</string>
     <string name="destroy_on_touch">Destroy on Touch</string>
     <string name="ball_count_label">Ball Count: %1$d</string>
     <string name="ball_speed_label">Base Speed: %1$.1f</string>

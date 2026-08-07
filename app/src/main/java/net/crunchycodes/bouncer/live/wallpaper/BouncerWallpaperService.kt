@@ -98,7 +98,7 @@ class BouncerWallpaperService : WallpaperService() {
         @Volatile
         private var renderThread: RenderThread? = null
 
-        private var runtimeBallController: RuntimeBallCountController? = null
+        private var runtimeBallController: RuntimePerformanceController? = null
         private var runtimeControllerDeviceCap = 0
         private var simulationBaseSpeed = Float.NaN
         @Volatile
@@ -353,6 +353,7 @@ class BouncerWallpaperService : WallpaperService() {
             private var reportedRuntimeBallCount = -1
             private var reportedRenderQuality: RenderQuality? = null
             private var reportedPhysicsSuspended: Boolean? = null
+            private var reportedPerformancePhase: RuntimePerformancePhase? = null
 
             init {
                 // Build the glow sprite once per render thread and reuse it for every ball.
@@ -379,7 +380,6 @@ class BouncerWallpaperService : WallpaperService() {
                 simulationState.prepareCapacity(deviceMaxBallCount)
                 ensureCollisionCapacity(deviceMaxBallCount * 4, deviceMaxBallCount)
                 val runtimeBallController = obtainRuntimeBallController(deviceMaxBallCount)
-                var appliedBallStyle = currentBallStyle
                 try {
                     while (!stopRequested.get() && !isInterrupted) {
                         val frameStartNanos = SystemClock.elapsedRealtimeNanos()
@@ -387,26 +387,33 @@ class BouncerWallpaperService : WallpaperService() {
                             .toFloat()
                             .coerceIn(0f, MAX_DELTA_SECONDS)
                         lastFrameNanos = frameStartNanos
-                        runtimeBallController.updateConfiguredBallCount(targetBallCount)
                         val requestedBallStyle = currentBallStyle
                         val adaptivePerformance = performanceMode == PerformanceMode.ADAPTIVE
                         val requestedSettingsRevision = performanceSettingsRevision.get()
-                        if (requestedSettingsRevision != runtimeControllerSettingsRevision) {
-                            runtimeBallController.onSettingsAdjusted()
+                        val settingsChanged =
+                            requestedSettingsRevision != runtimeControllerSettingsRevision
+                        runtimeBallController.updateConfiguration(
+                            value = RuntimePerformanceConfig(
+                                configuredBallCount = targetBallCount,
+                                adaptivePerformanceEnabled = adaptivePerformance,
+                                preferredRenderQuality = DevicePerformance.renderQuality(
+                                    deviceMaxBallCount,
+                                    requestedBallStyle,
+                                ),
+                                automaticStyleChanges =
+                                    adaptivePerformance && requestedBallStyle == BallStyle.AUTO,
+                                automaticPhysicsReduction =
+                                    adaptivePerformance &&
+                                        physicsEnabled &&
+                                        autoDisablePhysicsOnHeavyLoad,
+                            ),
+                            settingsReset = settingsChanged,
+                        )
+                        if (settingsChanged) {
                             simulationState.clear()
                             runtimeControllerSettingsRevision = requestedSettingsRevision
                         }
-                        runtimeBallController.updateAdaptivePerformance(adaptivePerformance)
-                        runtimeBallController.updatePreferredRenderQuality(
-                            value = DevicePerformance.renderQuality(deviceMaxBallCount, requestedBallStyle),
-                            allowAutomaticStyleChanges =
-                                adaptivePerformance && requestedBallStyle == BallStyle.AUTO,
-                            force = requestedBallStyle != appliedBallStyle,
-                        )
-                        runtimeBallController.updateAutomaticPhysicsReduction(
-                            adaptivePerformance && physicsEnabled && autoDisablePhysicsOnHeavyLoad,
-                        )
-                        appliedBallStyle = requestedBallStyle
+                        val performanceSnapshot = runtimeBallController.snapshot()
                         applyUpdatedBallSpeed()
                         refreshBallAppearanceIfNeeded()
 
@@ -420,12 +427,12 @@ class BouncerWallpaperService : WallpaperService() {
                                     width = canvas.width,
                                     height = canvas.height,
                                     deltaTime = deltaTime,
-                                    desiredBallCount = runtimeBallController.activeBallCount(),
-                                    solidBodyPhysicsAllowed = runtimeBallController.solidBodyPhysicsAllowed(),
+                                    desiredBallCount = performanceSnapshot.activeBallCount,
+                                    solidBodyPhysicsAllowed = performanceSnapshot.solidBodyPhysicsAllowed,
                                 )
                                 drawFrame(
                                     canvas = canvas,
-                                    quality = runtimeBallController.renderQuality(),
+                                    quality = performanceSnapshot.renderQuality,
                                 )
                             }
                         } catch (error: Exception) {
@@ -768,14 +775,17 @@ class BouncerWallpaperService : WallpaperService() {
                 return DevicePerformance.normalizeRefreshRateHz(displayRefreshRate ?: calibrationRefreshRate)
             }
 
-            private fun reportRuntimePerformanceIfChanged(controller: RuntimeBallCountController) {
-                val ballCount = controller.activeBallCount()
-                val quality = controller.renderQuality()
-                val physicsSuspended = !controller.solidBodyPhysicsAllowed()
+            private fun reportRuntimePerformanceIfChanged(controller: RuntimePerformanceController) {
+                val snapshot = controller.snapshot()
+                val ballCount = snapshot.activeBallCount
+                val quality = snapshot.renderQuality
+                val physicsSuspended = !snapshot.solidBodyPhysicsAllowed
+                val phase = snapshot.phase
                 if (
                     ballCount == reportedRuntimeBallCount &&
                     quality == reportedRenderQuality &&
-                    physicsSuspended == reportedPhysicsSuspended
+                    physicsSuspended == reportedPhysicsSuspended &&
+                    phase == reportedPerformancePhase
                 ) {
                     return
                 }
@@ -783,22 +793,36 @@ class BouncerWallpaperService : WallpaperService() {
                 reportedRuntimeBallCount = ballCount
                 reportedRenderQuality = quality
                 reportedPhysicsSuspended = physicsSuspended
-                settings.persistRuntimePerformanceState(ballCount, quality, physicsSuspended)
+                reportedPerformancePhase = phase
+                settings.persistRuntimePerformanceState(
+                    ballCount,
+                    quality,
+                    physicsSuspended,
+                    phase,
+                )
             }
         }
 
-        private fun obtainRuntimeBallController(deviceMaxBallCount: Int): RuntimeBallCountController {
+        private fun obtainRuntimeBallController(deviceMaxBallCount: Int): RuntimePerformanceController {
             val existing = runtimeBallController
             if (existing != null && runtimeControllerDeviceCap == deviceMaxBallCount) {
                 return existing
             }
 
-            return RuntimeBallCountController(
-                configuredBallCount = targetBallCount,
+            val adaptivePerformance = performanceMode == PerformanceMode.ADAPTIVE
+            return RuntimePerformanceController(
                 deviceMaxBallCount = deviceMaxBallCount,
-                initialRenderQuality = DevicePerformance.renderQuality(
-                    deviceMaxBallCount,
-                    currentBallStyle,
+                initialConfig = RuntimePerformanceConfig(
+                    configuredBallCount = targetBallCount,
+                    adaptivePerformanceEnabled = adaptivePerformance,
+                    preferredRenderQuality = DevicePerformance.renderQuality(
+                        deviceMaxBallCount,
+                        currentBallStyle,
+                    ),
+                    automaticStyleChanges =
+                        adaptivePerformance && currentBallStyle == BallStyle.AUTO,
+                    automaticPhysicsReduction =
+                        adaptivePerformance && physicsEnabled && autoDisablePhysicsOnHeavyLoad,
                 ),
             ).also {
                 runtimeBallController = it

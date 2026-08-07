@@ -105,11 +105,16 @@ class SettingsManagerTest {
             ballCount = 42,
             renderQuality = RenderQuality.Flat,
             physicsSuspended = true,
+            phase = RuntimePerformancePhase.PHYSICS_PAUSED,
         )
 
         assertEquals(42, settingsManager.runtimeBallCount)
         assertEquals(RenderQuality.Flat, settingsManager.runtimeRenderQuality)
         assertTrue(settingsManager.runtimePhysicsSuspended)
+        assertEquals(
+            RuntimePerformancePhase.PHYSICS_PAUSED,
+            settingsManager.runtimePerformancePhase,
+        )
     }
 
     @Test

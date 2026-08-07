@@ -83,6 +83,7 @@ class SettingsActivity : ComponentActivity() {
                 runtimeBallCount = settings.runtimeBallCount,
                 runtimeRenderQuality = settings.runtimeRenderQuality,
                 runtimePhysicsSuspended = settings.runtimePhysicsSuspended,
+                runtimePerformancePhase = settings.runtimePerformancePhase,
                 brightness = settings.brightness,
                 transparency = settings.transparency,
                 physicsEnabled = settings.physicsEnabled,
@@ -398,6 +399,26 @@ class SettingsActivity : ComponentActivity() {
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                         )
+                        Text(
+                            text = stringResource(
+                                R.string.current_performance_phase,
+                                stringResource(
+                                    when (initialState.runtimePerformancePhase) {
+                                        RuntimePerformancePhase.FIXED -> R.string.performance_phase_fixed
+                                        RuntimePerformancePhase.OBSERVING -> R.string.performance_phase_observing
+                                        RuntimePerformancePhase.REDUCING -> R.string.performance_phase_reducing
+                                        RuntimePerformancePhase.STABLE -> R.string.performance_phase_stable
+                                        RuntimePerformancePhase.RESTORING -> R.string.performance_phase_restoring
+                                        RuntimePerformancePhase.SETTINGS_GRACE -> R.string.performance_phase_settings_grace
+                                        RuntimePerformancePhase.PHYSICS_PAUSED -> R.string.performance_phase_physics_paused
+                                        RuntimePerformancePhase.TESTING_PHYSICS -> R.string.performance_phase_testing_physics
+                                        RuntimePerformancePhase.PHYSICS_COOLDOWN -> R.string.performance_phase_physics_cooldown
+                                    },
+                                ),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
@@ -522,6 +543,7 @@ class SettingsActivity : ComponentActivity() {
                         runtimeBallCount = 32,
                         runtimeRenderQuality = RenderQuality.Glow,
                         runtimePhysicsSuspended = false,
+                        runtimePerformancePhase = RuntimePerformancePhase.STABLE,
                         brightness = BallAppearance.DEFAULT_BRIGHTNESS,
                         transparency = BallAppearance.DEFAULT_TRANSPARENCY,
                         physicsEnabled = true,
@@ -562,6 +584,7 @@ class SettingsActivity : ComponentActivity() {
         val runtimeBallCount: Int,
         val runtimeRenderQuality: RenderQuality,
         val runtimePhysicsSuspended: Boolean,
+        val runtimePerformancePhase: RuntimePerformancePhase,
         val brightness: Float,
         val transparency: Float,
         val physicsEnabled: Boolean,

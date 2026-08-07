@@ -125,179 +125,179 @@ internal object DevicePerformance {
     }.coerceAtMost(BouncerPhysics.MAX_BALL_COUNT)
 }
 
-internal class RuntimeBallCountController(
-    configuredBallCount: Int,
-    private val deviceMaxBallCount: Int,
-    initialRenderQuality: RenderQuality = DevicePerformance.renderQuality(deviceMaxBallCount),
-) {
-    private var configuredBallCount = clamp(configuredBallCount)
-    private var activeBallCount = this.configuredBallCount
-    private var preferredRenderQuality = initialRenderQuality
-    private var currentRenderQuality = initialRenderQuality
-    private var adaptivePerformanceEnabled = true
-    private var automaticStyleChanges = false
-    private var automaticPhysicsReduction = false
-    private var solidBodyPhysicsSuspended = false
-    private var frameCounter = 0
-    private var badFrames = 0
-    private var totalFrameDurationNanos = 0.0
-    private var consecutiveGoodWindows = 0
-    private var consecutivePhysicsRecoveryWindows = 0
-    private var physicsSuspendedWindowCount = 0
-    private var physicsResumeGraceWindows = 0
-    private var failedPhysicsProbeCount = 0
-    private var physicsProbeInProgress = false
-    private var consecutivePhysicsHealthyWindows = 0
-    private var physicsPauseCooldownWindows = 0
-    private val performancePressureHistory = ArrayDeque<Float>(PERFORMANCE_HISTORY_WINDOWS)
+internal enum class RuntimePerformancePhase(val id: String) {
+    FIXED("fixed"),
+    OBSERVING("observing"),
+    REDUCING("reducing"),
+    STABLE("stable"),
+    RESTORING("restoring"),
+    SETTINGS_GRACE("settings_grace"),
+    PHYSICS_PAUSED("physics_paused"),
+    TESTING_PHYSICS("testing_physics"),
+    PHYSICS_COOLDOWN("physics_cooldown"),
+    ;
 
-    fun activeBallCount(): Int = activeBallCount
+    companion object {
+        private val byId = entries.associateBy(RuntimePerformancePhase::id)
 
-    fun renderQuality(): RenderQuality = currentRenderQuality
-
-    fun solidBodyPhysicsAllowed(): Boolean = !solidBodyPhysicsSuspended
-
-    fun onSettingsAdjusted() {
-        resetPerformanceHistory()
-        activeBallCount = configuredBallCount
-        currentRenderQuality = preferredRenderQuality
-        solidBodyPhysicsSuspended = false
-        physicsResumeGraceWindows = PHYSICS_SETTINGS_GRACE_WINDOWS
-        failedPhysicsProbeCount = 0
-        physicsProbeInProgress = false
-        consecutivePhysicsHealthyWindows = 0
-        physicsPauseCooldownWindows = 0
+        fun fromStoredValue(value: String?): RuntimePerformancePhase =
+            byId[value] ?: OBSERVING
     }
+}
 
-    fun updateAdaptivePerformance(enabled: Boolean) {
-        if (adaptivePerformanceEnabled == enabled) return
-        adaptivePerformanceEnabled = enabled
-        resetPerformanceHistory()
-        if (!enabled) {
-            activeBallCount = configuredBallCount
-            currentRenderQuality = preferredRenderQuality
-            solidBodyPhysicsSuspended = false
-            failedPhysicsProbeCount = 0
-            physicsProbeInProgress = false
-            physicsPauseCooldownWindows = 0
+internal data class RuntimePerformanceConfig(
+    val configuredBallCount: Int,
+    val adaptivePerformanceEnabled: Boolean,
+    val preferredRenderQuality: RenderQuality,
+    val automaticStyleChanges: Boolean,
+    val automaticPhysicsReduction: Boolean,
+)
+
+internal data class RuntimePerformanceSnapshot(
+    val activeBallCount: Int,
+    val renderQuality: RenderQuality,
+    val solidBodyPhysicsAllowed: Boolean,
+    val phase: RuntimePerformancePhase,
+)
+
+internal sealed interface LoadThrottleState {
+    data object Observing : LoadThrottleState
+    data object Throttling : LoadThrottleState
+    data class Stable(val consecutiveWindows: Int) : LoadThrottleState
+    data class Recovering(val windowsUntilNextStep: Int) : LoadThrottleState
+}
+
+internal sealed interface PhysicsThrottleState {
+    data object Enabled : PhysicsThrottleState
+    data class SettingsGrace(val remainingWindows: Int) : PhysicsThrottleState
+    data class Suspended(
+        val elapsedWindows: Int,
+        val consecutiveLightWindows: Int,
+    ) : PhysicsThrottleState
+
+    data class Probe(
+        val remainingWindows: Int,
+        val totalPressure: Float,
+        val peakPressure: Float,
+    ) : PhysicsThrottleState
+
+    data class Cooldown(val remainingWindows: Int) : PhysicsThrottleState
+}
+
+internal sealed interface PerformanceThrottleState {
+    val config: RuntimePerformanceConfig
+    val snapshot: RuntimePerformanceSnapshot
+
+    data class Fixed(
+        override val config: RuntimePerformanceConfig,
+        override val snapshot: RuntimePerformanceSnapshot,
+    ) : PerformanceThrottleState
+
+    data class Adaptive(
+        override val config: RuntimePerformanceConfig,
+        val loadState: LoadThrottleState,
+        val physicsState: PhysicsThrottleState,
+        val pressureHistory: List<Float>,
+        override val snapshot: RuntimePerformanceSnapshot,
+    ) : PerformanceThrottleState
+}
+
+internal sealed interface RuntimePerformanceEvent {
+    data class ConfigurationChanged(
+        val config: RuntimePerformanceConfig,
+        val settingsReset: Boolean,
+    ) : RuntimePerformanceEvent
+
+    data class WindowMeasured(val pressure: Float) : RuntimePerformanceEvent
+}
+
+internal object RuntimePerformanceStateMachine {
+    private const val MIN_ADAPTIVE_BALL_COUNT = 4
+    private const val MAX_ADAPTIVE_BALL_FLOOR = 12
+    private const val PERFORMANCE_HISTORY_WINDOWS = 8
+    private const val MIN_HISTORY_FOR_ADJUSTMENT = 2
+    private const val RECOVERY_STABLE_WINDOWS = 6
+    private const val RECENCY_WEIGHT_MULTIPLIER = 1.35f
+    private const val RECENT_PRESSURE_FLOOR = 0.8f
+    private const val IMMEDIATE_REACTION_THRESHOLD = 0.35f
+    private const val STABLE_PRESSURE_THRESHOLD = 0.015f
+    private const val STABLE_ROLLING_PRESSURE_THRESHOLD = 0.02f
+    private const val MILD_PRESSURE_THRESHOLD = 0.04f
+    private const val MODERATE_PRESSURE_THRESHOLD = 0.10f
+    private const val SEVERE_PRESSURE_THRESHOLD = 0.22f
+    private const val PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD = 0.45f
+    private const val PHYSICS_SUSPEND_PRESSURE_THRESHOLD = 0.24f
+    private const val PHYSICS_RECOVERY_PRESSURE_THRESHOLD = 0.04f
+    private const val PHYSICS_ROLLING_RECOVERY_THRESHOLD = 0.08f
+    private const val PHYSICS_RECOVERY_WINDOW_COUNT = 4
+    private const val PHYSICS_MAX_SUSPENDED_WINDOWS = 12
+    private const val PHYSICS_SETTINGS_GRACE_WINDOWS = 4
+    private const val PHYSICS_PROBE_WINDOWS = 3
+    private const val PHYSICS_PAUSE_COOLDOWN_WINDOWS = 60
+    private const val AUTO_FLAT_PRESSURE_THRESHOLD = 0.20f
+    private const val AUTO_GLOW_PRESSURE_THRESHOLD = 0.01f
+    private const val AUTO_FLAT_BALL_FRACTION = 0.5f
+    private const val AUTO_GLOW_BALL_FRACTION = 0.8f
+
+    fun initialState(
+        config: RuntimePerformanceConfig,
+        settingsReset: Boolean = false,
+    ): PerformanceThrottleState {
+        if (!config.adaptivePerformanceEnabled) {
+            return PerformanceThrottleState.Fixed(
+                config = config,
+                snapshot = RuntimePerformanceSnapshot(
+                    activeBallCount = config.configuredBallCount,
+                    renderQuality = config.preferredRenderQuality,
+                    solidBodyPhysicsAllowed = true,
+                    phase = RuntimePerformancePhase.FIXED,
+                ),
+            )
         }
-    }
 
-    fun updateAutomaticPhysicsReduction(enabled: Boolean) {
-        if (automaticPhysicsReduction == enabled) return
-        automaticPhysicsReduction = enabled
-        consecutivePhysicsRecoveryWindows = 0
-        physicsSuspendedWindowCount = 0
-        if (!enabled) {
-            solidBodyPhysicsSuspended = false
-            physicsResumeGraceWindows = 0
-            failedPhysicsProbeCount = 0
-            physicsProbeInProgress = false
-            consecutivePhysicsHealthyWindows = 0
-            physicsPauseCooldownWindows = 0
-        }
-    }
-
-    fun updateConfiguredBallCount(value: Int) {
-        configuredBallCount = clamp(value)
-        activeBallCount = if (adaptivePerformanceEnabled) {
-            min(activeBallCount, configuredBallCount)
+        val physicsState = if (config.automaticPhysicsReduction && settingsReset) {
+            PhysicsThrottleState.SettingsGrace(PHYSICS_SETTINGS_GRACE_WINDOWS)
         } else {
-            configuredBallCount
+            PhysicsThrottleState.Enabled
         }
+        return adaptiveState(
+            config = config,
+            loadState = LoadThrottleState.Observing,
+            physicsState = physicsState,
+            pressureHistory = emptyList(),
+            activeBallCount = config.configuredBallCount,
+            renderQuality = config.preferredRenderQuality,
+        )
     }
 
-    fun updatePreferredRenderQuality(
-        value: RenderQuality,
-        allowAutomaticStyleChanges: Boolean = false,
-        force: Boolean = false,
-    ) {
-        if (
-            value == preferredRenderQuality &&
-            allowAutomaticStyleChanges == automaticStyleChanges &&
-            !force
-        ) {
-            return
-        }
-        preferredRenderQuality = value
-        currentRenderQuality = value
-        automaticStyleChanges = allowAutomaticStyleChanges
-        resetPerformanceHistory()
-        solidBodyPhysicsSuspended = false
-    }
-
-    fun recordFrame(frameDurationNanos: Long, frameBudgetNanos: Long): Int {
-        if (!adaptivePerformanceEnabled) return activeBallCount
-
-        val badFrameThreshold = (frameBudgetNanos * 1.1f).roundToInt().toLong()
-        frameCounter++
-        totalFrameDurationNanos += frameDurationNanos.coerceAtLeast(0L).toDouble()
-        if (frameDurationNanos > badFrameThreshold) {
-            badFrames++
-        }
-
-        if (frameCounter < DevicePerformance.RUNTIME_WINDOW_FRAMES) {
-            return activeBallCount
-        }
-
-        val badRatio = badFrames.toFloat() / frameCounter.toFloat()
-        val averageFrameDuration = totalFrameDurationNanos / frameCounter.toDouble()
-        val averageOverrun = (averageFrameDuration / frameBudgetNanos.coerceAtLeast(1L) - 1.0)
-            .toFloat()
-            .coerceAtLeast(0f)
-        // A frame that only just misses the budget should not carry the same weight as a
-        // genuinely expensive frame. Average overrun captures severity; the scaled ratio
-        // still catches intermittent jank without turning a small timing miss into 100% load.
-        val latestPressure = max(badRatio * BAD_FRAME_RATIO_WEIGHT, averageOverrun)
-            .coerceIn(0f, 1f)
-        addPerformancePressure(latestPressure)
-        val rollingPressure = rollingPerformancePressure()
-        val responsivePressure = max(rollingPressure, latestPressure * RECENT_PRESSURE_FLOOR)
-
-        if (
-            performancePressureHistory.size >= MIN_HISTORY_FOR_ADJUSTMENT ||
-            latestPressure >= IMMEDIATE_REACTION_THRESHOLD
-        ) {
-            val reductionFraction = if (latestPressure >= MILD_PRESSURE_THRESHOLD) {
-                reductionFraction(responsivePressure)
+    fun transition(
+        state: PerformanceThrottleState,
+        event: RuntimePerformanceEvent,
+    ): PerformanceThrottleState = when (event) {
+        is RuntimePerformanceEvent.ConfigurationChanged -> {
+            if (state.config == event.config && !event.settingsReset) {
+                state
             } else {
-                0f
+                initialState(event.config, event.settingsReset)
             }
-            if (reductionFraction > 0f) {
-                activeBallCount = max(
-                    adaptiveMinimumBallCount(),
-                    activeBallCount - reductionStep(reductionFraction),
-                )
-                consecutiveGoodWindows = 0
-            } else if (latestPressure <= STABLE_PRESSURE_THRESHOLD) {
-                consecutiveGoodWindows++
-                if (consecutiveGoodWindows >= RECOVERY_WINDOW_COUNT && activeBallCount < configuredBallCount) {
-                    activeBallCount = min(configuredBallCount, activeBallCount + recoveryStep())
-                    consecutiveGoodWindows = 0
-                }
-            } else {
-                consecutiveGoodWindows = 0
-            }
-
-            updateAutomaticRenderQuality(latestPressure, responsivePressure)
-        } else {
-            consecutiveGoodWindows = 0
         }
-        updateAutomaticPhysics(latestPressure, responsivePressure)
 
-        frameCounter = 0
-        badFrames = 0
-        totalFrameDurationNanos = 0.0
-        return activeBallCount
+        is RuntimePerformanceEvent.WindowMeasured -> when (state) {
+            is PerformanceThrottleState.Fixed -> state
+            is PerformanceThrottleState.Adaptive -> transitionWindow(
+                state,
+                event.pressure.coerceIn(0f, 1f),
+            )
+        }
     }
 
-    internal fun rollingPerformancePressure(): Float {
-        if (performancePressureHistory.isEmpty()) return 0f
+    fun rollingPressure(history: List<Float>): Float {
+        if (history.isEmpty()) return 0f
 
         var weight = 1f
         var weightedPressure = 0f
         var totalWeight = 0f
-        performancePressureHistory.forEach { pressure ->
+        history.forEach { pressure ->
             weightedPressure += pressure * weight
             totalWeight += weight
             weight *= RECENCY_WEIGHT_MULTIPLIER
@@ -305,123 +305,304 @@ internal class RuntimeBallCountController(
         return weightedPressure / totalWeight
     }
 
-    private fun addPerformancePressure(value: Float) {
-        if (performancePressureHistory.size == PERFORMANCE_HISTORY_WINDOWS) {
-            performancePressureHistory.removeFirst()
-        }
-        performancePressureHistory.addLast(value.coerceIn(0f, 1f))
+    private fun transitionWindow(
+        state: PerformanceThrottleState.Adaptive,
+        latestPressure: Float,
+    ): PerformanceThrottleState.Adaptive {
+        val history = (state.pressureHistory + latestPressure)
+            .takeLast(PERFORMANCE_HISTORY_WINDOWS)
+        val rollingPressure = rollingPressure(history)
+        val responsivePressure = max(rollingPressure, latestPressure * RECENT_PRESSURE_FLOOR)
+        val loadTransition = transitionLoad(
+            config = state.config,
+            currentState = state.loadState,
+            currentBallCount = state.snapshot.activeBallCount,
+            latestPressure = latestPressure,
+            rollingPressure = rollingPressure,
+            responsivePressure = responsivePressure,
+            historySize = history.size,
+        )
+        val renderQuality = transitionRenderQuality(
+            config = state.config,
+            currentQuality = state.snapshot.renderQuality,
+            activeBallCount = loadTransition.activeBallCount,
+            latestPressure = latestPressure,
+            rollingPressure = rollingPressure,
+            historySize = history.size,
+        )
+        val physicsState = transitionPhysics(
+            config = state.config,
+            currentState = state.physicsState,
+            latestPressure = latestPressure,
+            responsivePressure = responsivePressure,
+            historySize = history.size,
+        )
+
+        return adaptiveState(
+            config = state.config,
+            loadState = loadTransition.state,
+            physicsState = physicsState,
+            pressureHistory = history,
+            activeBallCount = loadTransition.activeBallCount,
+            renderQuality = renderQuality,
+        )
     }
 
-    private fun reductionFraction(rollingPressure: Float): Float = when {
-        rollingPressure >= SEVERE_PRESSURE_THRESHOLD -> 0.20f
-        rollingPressure >= MODERATE_PRESSURE_THRESHOLD -> 0.12f
-        rollingPressure >= MILD_PRESSURE_THRESHOLD -> 0.06f
-        else -> 0f
-    }
-
-    private fun reductionStep(fraction: Float): Int =
-        max(2, (activeBallCount * fraction).roundToInt())
-
-    private fun recoveryStep(): Int = max(1, (configuredBallCount * 0.05f).roundToInt())
-
-    private fun updateAutomaticPhysics(latestPressure: Float, responsivePressure: Float) {
-        if (!automaticPhysicsReduction) return
-        if (physicsPauseCooldownWindows > 0) {
-            physicsPauseCooldownWindows--
-            solidBodyPhysicsSuspended = false
-            if (physicsPauseCooldownWindows == 0) {
-                resetPerformanceHistory()
+    private fun transitionLoad(
+        config: RuntimePerformanceConfig,
+        currentState: LoadThrottleState,
+        currentBallCount: Int,
+        latestPressure: Float,
+        rollingPressure: Float,
+        responsivePressure: Float,
+        historySize: Int,
+    ): LoadTransition {
+        val canReact = historySize >= MIN_HISTORY_FOR_ADJUSTMENT ||
+            latestPressure >= IMMEDIATE_REACTION_THRESHOLD
+        if (canReact && latestPressure >= MILD_PRESSURE_THRESHOLD) {
+            val reductionFraction = when {
+                responsivePressure >= SEVERE_PRESSURE_THRESHOLD -> 0.20f
+                responsivePressure >= MODERATE_PRESSURE_THRESHOLD -> 0.12f
+                else -> 0.06f
             }
-            return
-        }
-        if (physicsResumeGraceWindows > 0) {
-            physicsResumeGraceWindows--
-            solidBodyPhysicsSuspended = false
-            return
+            val reductionStep = max(2, (currentBallCount * reductionFraction).roundToInt())
+            return LoadTransition(
+                state = LoadThrottleState.Throttling,
+                activeBallCount = max(
+                    adaptiveMinimumBallCount(config.configuredBallCount),
+                    currentBallCount - reductionStep,
+                ),
+            )
         }
 
-        if (!solidBodyPhysicsSuspended) {
-            if (latestPressure <= PHYSICS_RECOVERY_PRESSURE_THRESHOLD) {
-                consecutivePhysicsHealthyWindows++
-                if (consecutivePhysicsHealthyWindows >= PHYSICS_PROBE_SUCCESS_WINDOWS) {
-                    failedPhysicsProbeCount = 0
-                    physicsProbeInProgress = false
-                    consecutivePhysicsHealthyWindows = 0
+        val fullyStable = historySize == PERFORMANCE_HISTORY_WINDOWS &&
+            latestPressure <= STABLE_PRESSURE_THRESHOLD &&
+            rollingPressure <= STABLE_ROLLING_PRESSURE_THRESHOLD
+        if (!fullyStable) {
+            return LoadTransition(
+                state = LoadThrottleState.Observing,
+                activeBallCount = currentBallCount,
+            )
+        }
+        if (currentBallCount >= config.configuredBallCount) {
+            return LoadTransition(
+                state = LoadThrottleState.Stable(RECOVERY_STABLE_WINDOWS),
+                activeBallCount = config.configuredBallCount,
+            )
+        }
+
+        return when (currentState) {
+            is LoadThrottleState.Recovering -> {
+                if (currentState.windowsUntilNextStep > 1) {
+                    LoadTransition(
+                        state = currentState.copy(
+                            windowsUntilNextStep = currentState.windowsUntilNextStep - 1,
+                        ),
+                        activeBallCount = currentBallCount,
+                    )
+                } else {
+                    LoadTransition(
+                        state = LoadThrottleState.Recovering(RECOVERY_STABLE_WINDOWS),
+                        activeBallCount = min(
+                            config.configuredBallCount,
+                            currentBallCount + recoveryStep(config.configuredBallCount),
+                        ),
+                    )
                 }
-            } else {
-                consecutivePhysicsHealthyWindows = 0
             }
 
-            val sustainedHeavyLoad =
-                performancePressureHistory.size >= MIN_HISTORY_FOR_ADJUSTMENT &&
-                    responsivePressure >= PHYSICS_SUSPEND_PRESSURE_THRESHOLD
-            if (latestPressure >= PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD || sustainedHeavyLoad) {
-                if (physicsProbeInProgress) {
-                    failedPhysicsProbeCount++
-                    if (failedPhysicsProbeCount >= PHYSICS_FAILED_PROBES_BEFORE_COOLDOWN) {
-                        // If repeated probes remain overloaded, pausing collisions is not
-                        // fixing the bottleneck. Keep physics enabled while ball/style
-                        // adaptation does the useful work, then reassess much later.
-                        solidBodyPhysicsSuspended = false
-                        physicsProbeInProgress = false
-                        failedPhysicsProbeCount = 0
-                        physicsPauseCooldownWindows = PHYSICS_PAUSE_COOLDOWN_WINDOWS
-                        consecutivePhysicsHealthyWindows = 0
-                        return
+            is LoadThrottleState.Stable -> {
+                val stableWindows = currentState.consecutiveWindows + 1
+                if (stableWindows >= RECOVERY_STABLE_WINDOWS) {
+                    LoadTransition(
+                        state = LoadThrottleState.Recovering(RECOVERY_STABLE_WINDOWS),
+                        activeBallCount = min(
+                            config.configuredBallCount,
+                            currentBallCount + recoveryStep(config.configuredBallCount),
+                        ),
+                    )
+                } else {
+                    LoadTransition(
+                        state = LoadThrottleState.Stable(stableWindows),
+                        activeBallCount = currentBallCount,
+                    )
+                }
+            }
+
+            else -> LoadTransition(
+                state = LoadThrottleState.Stable(1),
+                activeBallCount = currentBallCount,
+            )
+        }
+    }
+
+    private fun transitionPhysics(
+        config: RuntimePerformanceConfig,
+        currentState: PhysicsThrottleState,
+        latestPressure: Float,
+        responsivePressure: Float,
+        historySize: Int,
+    ): PhysicsThrottleState {
+        if (!config.automaticPhysicsReduction) return PhysicsThrottleState.Enabled
+
+        return when (currentState) {
+            PhysicsThrottleState.Enabled -> {
+                val sustainedHeavyLoad =
+                    historySize >= MIN_HISTORY_FOR_ADJUSTMENT &&
+                        responsivePressure >= PHYSICS_SUSPEND_PRESSURE_THRESHOLD
+                if (
+                    latestPressure >= PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD ||
+                    sustainedHeavyLoad
+                ) {
+                    PhysicsThrottleState.Suspended(
+                        elapsedWindows = 0,
+                        consecutiveLightWindows = 0,
+                    )
+                } else {
+                    PhysicsThrottleState.Enabled
+                }
+            }
+
+            is PhysicsThrottleState.SettingsGrace -> {
+                if (currentState.remainingWindows > 1) {
+                    currentState.copy(remainingWindows = currentState.remainingWindows - 1)
+                } else {
+                    PhysicsThrottleState.Enabled
+                }
+            }
+
+            is PhysicsThrottleState.Suspended -> {
+                val elapsedWindows = currentState.elapsedWindows + 1
+                val lightWindows = if (latestPressure <= PHYSICS_RECOVERY_PRESSURE_THRESHOLD) {
+                    currentState.consecutiveLightWindows + 1
+                } else {
+                    0
+                }
+                val readyForProbe =
+                    elapsedWindows >= PHYSICS_MAX_SUSPENDED_WINDOWS ||
+                        (
+                            lightWindows >= PHYSICS_RECOVERY_WINDOW_COUNT &&
+                                responsivePressure <= PHYSICS_ROLLING_RECOVERY_THRESHOLD
+                            )
+                if (readyForProbe) {
+                    PhysicsThrottleState.Probe(
+                        remainingWindows = PHYSICS_PROBE_WINDOWS,
+                        totalPressure = 0f,
+                        peakPressure = 0f,
+                    )
+                } else {
+                    currentState.copy(
+                        elapsedWindows = elapsedWindows,
+                        consecutiveLightWindows = lightWindows,
+                    )
+                }
+            }
+
+            is PhysicsThrottleState.Probe -> {
+                val totalPressure = currentState.totalPressure + latestPressure
+                val peakPressure = max(currentState.peakPressure, latestPressure)
+                if (currentState.remainingWindows > 1) {
+                    currentState.copy(
+                        remainingWindows = currentState.remainingWindows - 1,
+                        totalPressure = totalPressure,
+                        peakPressure = peakPressure,
+                    )
+                } else {
+                    val averagePressure = totalPressure / PHYSICS_PROBE_WINDOWS.toFloat()
+                    val probeFailed =
+                        peakPressure >= PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD ||
+                            averagePressure >= PHYSICS_SUSPEND_PRESSURE_THRESHOLD
+                    if (probeFailed) {
+                        PhysicsThrottleState.Cooldown(PHYSICS_PAUSE_COOLDOWN_WINDOWS)
+                    } else {
+                        PhysicsThrottleState.Enabled
                     }
                 }
-                solidBodyPhysicsSuspended = true
-                physicsProbeInProgress = false
-                consecutivePhysicsRecoveryWindows = 0
-                consecutivePhysicsHealthyWindows = 0
-                physicsSuspendedWindowCount = 0
             }
-            return
-        }
 
-        physicsSuspendedWindowCount++
-        val maximumSuspendedWindows = PHYSICS_MAX_SUSPENDED_WINDOWS shl failedPhysicsProbeCount
-
-        if (latestPressure <= PHYSICS_RECOVERY_PRESSURE_THRESHOLD) {
-            consecutivePhysicsRecoveryWindows++
-            if (
-                physicsSuspendedWindowCount >= maximumSuspendedWindows ||
-                (
-                    consecutivePhysicsRecoveryWindows >= PHYSICS_RECOVERY_WINDOW_COUNT &&
-                        responsivePressure <= PHYSICS_ROLLING_RECOVERY_THRESHOLD
-                    )
-            ) {
-                startPhysicsProbe()
-            }
-        } else {
-            consecutivePhysicsRecoveryWindows = 0
-            if (physicsSuspendedWindowCount >= maximumSuspendedWindows) {
-                startPhysicsProbe()
+            is PhysicsThrottleState.Cooldown -> {
+                if (currentState.remainingWindows > 1) {
+                    currentState.copy(remainingWindows = currentState.remainingWindows - 1)
+                } else {
+                    PhysicsThrottleState.Enabled
+                }
             }
         }
     }
 
-    private fun startPhysicsProbe() {
-        // Discard measurements gathered with collisions disabled. The fresh history and
-        // grace windows let the controller judge the cost of collisions themselves.
-        resetPerformanceHistory()
-        solidBodyPhysicsSuspended = false
-        physicsProbeInProgress = true
-        physicsResumeGraceWindows = PHYSICS_PROBE_GRACE_WINDOWS
+    private fun transitionRenderQuality(
+        config: RuntimePerformanceConfig,
+        currentQuality: RenderQuality,
+        activeBallCount: Int,
+        latestPressure: Float,
+        rollingPressure: Float,
+        historySize: Int,
+    ): RenderQuality {
+        if (
+            !config.automaticStyleChanges ||
+            config.preferredRenderQuality != RenderQuality.Glow ||
+            historySize < PERFORMANCE_HISTORY_WINDOWS
+        ) {
+            return config.preferredRenderQuality
+        }
+
+        val flatSwitchBallCount = max(
+            adaptiveMinimumBallCount(config.configuredBallCount),
+            (config.configuredBallCount * AUTO_FLAT_BALL_FRACTION).roundToInt(),
+        )
+        if (
+            currentQuality == RenderQuality.Glow &&
+            latestPressure >= MODERATE_PRESSURE_THRESHOLD &&
+            rollingPressure >= AUTO_FLAT_PRESSURE_THRESHOLD &&
+            activeBallCount <= flatSwitchBallCount
+        ) {
+            return RenderQuality.Flat
+        }
+        if (
+            currentQuality == RenderQuality.Flat &&
+            rollingPressure <= AUTO_GLOW_PRESSURE_THRESHOLD &&
+            activeBallCount >= (config.configuredBallCount * AUTO_GLOW_BALL_FRACTION).roundToInt()
+        ) {
+            return RenderQuality.Glow
+        }
+        return currentQuality
     }
 
-    private fun resetPerformanceHistory() {
-        frameCounter = 0
-        badFrames = 0
-        totalFrameDurationNanos = 0.0
-        consecutiveGoodWindows = 0
-        consecutivePhysicsRecoveryWindows = 0
-        consecutivePhysicsHealthyWindows = 0
-        physicsSuspendedWindowCount = 0
-        performancePressureHistory.clear()
+    private fun adaptiveState(
+        config: RuntimePerformanceConfig,
+        loadState: LoadThrottleState,
+        physicsState: PhysicsThrottleState,
+        pressureHistory: List<Float>,
+        activeBallCount: Int,
+        renderQuality: RenderQuality,
+    ): PerformanceThrottleState.Adaptive {
+        val phase = when (physicsState) {
+            is PhysicsThrottleState.SettingsGrace -> RuntimePerformancePhase.SETTINGS_GRACE
+            is PhysicsThrottleState.Suspended -> RuntimePerformancePhase.PHYSICS_PAUSED
+            is PhysicsThrottleState.Probe -> RuntimePerformancePhase.TESTING_PHYSICS
+            is PhysicsThrottleState.Cooldown -> RuntimePerformancePhase.PHYSICS_COOLDOWN
+            PhysicsThrottleState.Enabled -> when (loadState) {
+                LoadThrottleState.Observing -> RuntimePerformancePhase.OBSERVING
+                LoadThrottleState.Throttling -> RuntimePerformancePhase.REDUCING
+                is LoadThrottleState.Stable -> RuntimePerformancePhase.STABLE
+                is LoadThrottleState.Recovering -> RuntimePerformancePhase.RESTORING
+            }
+        }
+        return PerformanceThrottleState.Adaptive(
+            config = config,
+            loadState = loadState,
+            physicsState = physicsState,
+            pressureHistory = pressureHistory,
+            snapshot = RuntimePerformanceSnapshot(
+                activeBallCount = activeBallCount,
+                renderQuality = renderQuality,
+                solidBodyPhysicsAllowed = physicsState !is PhysicsThrottleState.Suspended,
+                phase = phase,
+            ),
+        )
     }
 
-    private fun adaptiveMinimumBallCount(): Int =
+    private fun adaptiveMinimumBallCount(configuredBallCount: Int): Int =
         min(
             configuredBallCount,
             max(
@@ -430,69 +611,108 @@ internal class RuntimeBallCountController(
             ),
         )
 
-    private fun updateAutomaticRenderQuality(latestPressure: Float, rollingPressure: Float) {
-        if (
-            !automaticStyleChanges ||
-            preferredRenderQuality != RenderQuality.Glow ||
-            performancePressureHistory.size < PERFORMANCE_HISTORY_WINDOWS
-        ) {
-            return
-        }
+    private fun recoveryStep(configuredBallCount: Int): Int =
+        max(1, (configuredBallCount * 0.03f).roundToInt())
 
-        val flatSwitchBallCount = max(
-            adaptiveMinimumBallCount(),
-            (configuredBallCount * AUTO_FLAT_BALL_FRACTION).roundToInt(),
+    private data class LoadTransition(
+        val state: LoadThrottleState,
+        val activeBallCount: Int,
+    )
+}
+
+internal class RuntimePerformanceController(
+    private val deviceMaxBallCount: Int,
+    initialConfig: RuntimePerformanceConfig,
+) {
+    private var config = normalize(initialConfig)
+    private var state: PerformanceThrottleState =
+        RuntimePerformanceStateMachine.initialState(config)
+    private var frameCounter = 0
+    private var badFrames = 0
+    private var totalFrameDurationNanos = 0.0
+
+    constructor(
+        configuredBallCount: Int,
+        deviceMaxBallCount: Int,
+        initialRenderQuality: RenderQuality = DevicePerformance.renderQuality(deviceMaxBallCount),
+    ) : this(
+        deviceMaxBallCount = deviceMaxBallCount,
+        initialConfig = RuntimePerformanceConfig(
+            configuredBallCount = configuredBallCount,
+            adaptivePerformanceEnabled = true,
+            preferredRenderQuality = initialRenderQuality,
+            automaticStyleChanges = false,
+            automaticPhysicsReduction = false,
+        ),
+    )
+
+    fun snapshot(): RuntimePerformanceSnapshot = state.snapshot
+
+    fun currentState(): PerformanceThrottleState = state
+
+    fun updateConfiguration(
+        value: RuntimePerformanceConfig,
+        settingsReset: Boolean = false,
+    ) {
+        val normalized = normalize(value)
+        val configurationChanged = normalized != config
+        state = RuntimePerformanceStateMachine.transition(
+            state,
+            RuntimePerformanceEvent.ConfigurationChanged(
+                config = normalized,
+                settingsReset = settingsReset,
+            ),
         )
-        if (
-            currentRenderQuality == RenderQuality.Glow &&
-            latestPressure >= MODERATE_PRESSURE_THRESHOLD &&
-            rollingPressure >= AUTO_FLAT_PRESSURE_THRESHOLD &&
-            activeBallCount <= flatSwitchBallCount
-        ) {
-            currentRenderQuality = RenderQuality.Flat
-            return
-        }
-
-        if (
-            currentRenderQuality == RenderQuality.Flat &&
-            rollingPressure <= AUTO_GLOW_PRESSURE_THRESHOLD &&
-            activeBallCount >= (configuredBallCount * AUTO_GLOW_BALL_FRACTION).roundToInt()
-        ) {
-            currentRenderQuality = RenderQuality.Glow
-        }
+        config = normalized
+        if (settingsReset || configurationChanged) resetFrameAccumulator()
     }
 
-    private fun clamp(value: Int): Int =
-        value.coerceIn(BouncerPhysics.MIN_BALL_COUNT, deviceMaxBallCount)
+    fun recordFrame(frameDurationNanos: Long, frameBudgetNanos: Long): RuntimePerformanceSnapshot {
+        if (state is PerformanceThrottleState.Fixed) return state.snapshot
+
+        val badFrameThreshold = (frameBudgetNanos * 1.1f).roundToInt().toLong()
+        frameCounter++
+        totalFrameDurationNanos += frameDurationNanos.coerceAtLeast(0L).toDouble()
+        if (frameDurationNanos > badFrameThreshold) badFrames++
+
+        if (frameCounter >= DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            val badRatio = badFrames.toFloat() / frameCounter.toFloat()
+            val averageFrameDuration = totalFrameDurationNanos / frameCounter.toDouble()
+            val averageOverrun =
+                (averageFrameDuration / frameBudgetNanos.coerceAtLeast(1L) - 1.0)
+                    .toFloat()
+                    .coerceAtLeast(0f)
+            val pressure = max(badRatio * BAD_FRAME_RATIO_WEIGHT, averageOverrun)
+                .coerceIn(0f, 1f)
+            state = RuntimePerformanceStateMachine.transition(
+                state,
+                RuntimePerformanceEvent.WindowMeasured(pressure),
+            )
+            resetFrameAccumulator()
+        }
+        return state.snapshot
+    }
+
+    internal fun rollingPerformancePressure(): Float =
+        (state as? PerformanceThrottleState.Adaptive)
+            ?.let { RuntimePerformanceStateMachine.rollingPressure(it.pressureHistory) }
+            ?: 0f
+
+    private fun normalize(value: RuntimePerformanceConfig): RuntimePerformanceConfig =
+        value.copy(
+            configuredBallCount = value.configuredBallCount.coerceIn(
+                BouncerPhysics.MIN_BALL_COUNT,
+                deviceMaxBallCount,
+            ),
+        )
+
+    private fun resetFrameAccumulator() {
+        frameCounter = 0
+        badFrames = 0
+        totalFrameDurationNanos = 0.0
+    }
 
     private companion object {
-        const val MIN_ADAPTIVE_BALL_COUNT = 4
-        const val MAX_ADAPTIVE_BALL_FLOOR = 12
-        const val PERFORMANCE_HISTORY_WINDOWS = 8
-        const val MIN_HISTORY_FOR_ADJUSTMENT = 2
-        const val RECOVERY_WINDOW_COUNT = 2
-        const val RECENCY_WEIGHT_MULTIPLIER = 1.35f
-        const val RECENT_PRESSURE_FLOOR = 0.8f
         const val BAD_FRAME_RATIO_WEIGHT = 0.2f
-        const val IMMEDIATE_REACTION_THRESHOLD = 0.35f
-        const val STABLE_PRESSURE_THRESHOLD = 0.015f
-        const val MILD_PRESSURE_THRESHOLD = 0.04f
-        const val MODERATE_PRESSURE_THRESHOLD = 0.10f
-        const val SEVERE_PRESSURE_THRESHOLD = 0.22f
-        const val PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD = 0.45f
-        const val PHYSICS_SUSPEND_PRESSURE_THRESHOLD = 0.24f
-        const val PHYSICS_RECOVERY_PRESSURE_THRESHOLD = 0.04f
-        const val PHYSICS_ROLLING_RECOVERY_THRESHOLD = 0.08f
-        const val PHYSICS_RECOVERY_WINDOW_COUNT = 4
-        const val PHYSICS_MAX_SUSPENDED_WINDOWS = 12
-        const val PHYSICS_SETTINGS_GRACE_WINDOWS = 4
-        const val PHYSICS_PROBE_GRACE_WINDOWS = 3
-        const val PHYSICS_PROBE_SUCCESS_WINDOWS = 6
-        const val PHYSICS_FAILED_PROBES_BEFORE_COOLDOWN = 1
-        const val PHYSICS_PAUSE_COOLDOWN_WINDOWS = 60
-        const val AUTO_FLAT_PRESSURE_THRESHOLD = 0.20f
-        const val AUTO_GLOW_PRESSURE_THRESHOLD = 0.01f
-        const val AUTO_FLAT_BALL_FRACTION = 0.5f
-        const val AUTO_GLOW_BALL_FRACTION = 0.8f
     }
 }

@@ -23,6 +23,7 @@ internal class SettingsManager(context: Context) {
         private const val KEY_RUNTIME_BALL_COUNT = "runtime_ball_count"
         private const val KEY_RUNTIME_RENDER_QUALITY = "runtime_render_quality"
         private const val KEY_RUNTIME_PHYSICS_SUSPENDED = "runtime_physics_suspended"
+        private const val KEY_RUNTIME_PERFORMANCE_PHASE = "runtime_performance_phase"
         const val KEY_SIZE_BEHAVIOR = "size_behavior"
         const val KEY_LIFESPAN = "lifespan_base"
         const val KEY_DESTROY_ON_TOUCH = "destroy_on_touch"
@@ -123,10 +124,16 @@ internal class SettingsManager(context: Context) {
     val runtimePhysicsSuspended: Boolean
         get() = prefs.getBoolean(KEY_RUNTIME_PHYSICS_SUSPENDED, false)
 
+    val runtimePerformancePhase: RuntimePerformancePhase
+        get() = RuntimePerformancePhase.fromStoredValue(
+            prefs.getString(KEY_RUNTIME_PERFORMANCE_PHASE, null),
+        )
+
     fun persistRuntimePerformanceState(
         ballCount: Int,
         renderQuality: RenderQuality,
         physicsSuspended: Boolean,
+        phase: RuntimePerformancePhase,
     ) {
         prefs.edit {
             putInt(
@@ -135,6 +142,7 @@ internal class SettingsManager(context: Context) {
             )
             putString(KEY_RUNTIME_RENDER_QUALITY, renderQuality.name)
             putBoolean(KEY_RUNTIME_PHYSICS_SUSPENDED, physicsSuspended)
+            putString(KEY_RUNTIME_PERFORMANCE_PHASE, phase.id)
         }
     }
 

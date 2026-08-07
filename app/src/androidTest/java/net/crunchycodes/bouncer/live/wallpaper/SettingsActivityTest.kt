@@ -43,6 +43,13 @@ class SettingsActivityTest {
     }
 
     @Test
+    fun performanceSectionShowsCurrentStateMachinePhase() {
+        composeTestRule.onNodeWithText("Performance & calibration").performClick()
+
+        composeTestRule.onNodeWithText("Adaptive state:", substring = true).assertExists()
+    }
+
+    @Test
     fun doneKeepsSettingsActivityInTask() {
         val activity = composeTestRule.activity
 
