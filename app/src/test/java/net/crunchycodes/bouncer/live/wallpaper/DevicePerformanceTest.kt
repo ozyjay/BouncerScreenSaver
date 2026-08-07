@@ -77,6 +77,27 @@ class DevicePerformanceTest {
     }
 
     @Test
+    fun runtimeControllerKeepsGlowDisabledAfterOverload() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(
+            configuredBallCount = 100,
+            deviceMaxBallCount = 100,
+            initialRenderQuality = RenderQuality.Glow,
+        )
+
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 2) {
+            controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
+        }
+        assertEquals(RenderQuality.Flat, controller.renderQuality())
+
+        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 24) {
+            controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
+        }
+
+        assertEquals(RenderQuality.Flat, controller.renderQuality())
+    }
+
+    @Test
     fun runtimeControllerDoesNotCollapseLargePopulationToOneBall() {
         val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
         val controller = RuntimeBallCountController(

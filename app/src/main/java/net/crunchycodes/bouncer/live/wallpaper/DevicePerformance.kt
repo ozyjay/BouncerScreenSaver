@@ -169,13 +169,6 @@ internal class RuntimeBallCountController(
             if (consecutiveGoodWindows >= 6 && activeBallCount < configuredBallCount) {
                 activeBallCount = min(configuredBallCount, activeBallCount + recoveryStep())
                 consecutiveGoodWindows = 0
-            } else if (
-                consecutiveGoodWindows >= 6 &&
-                activeBallCount == configuredBallCount &&
-                currentRenderQuality != initialRenderQuality
-            ) {
-                currentRenderQuality = initialRenderQuality
-                consecutiveGoodWindows = 0
             }
         }
 
