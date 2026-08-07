@@ -18,6 +18,7 @@ internal class SettingsManager(context: Context) {
         const val KEY_TRANSPARENCY = "transparency"
         const val KEY_BALL_STYLE = "ball_style"
         const val KEY_PHYSICS = "physics_enabled"
+        const val KEY_AUTO_DISABLE_PHYSICS = "auto_disable_physics_on_heavy_load"
         const val KEY_SIZE_BEHAVIOR = "size_behavior"
         const val KEY_LIFESPAN = "lifespan_base"
         const val KEY_DESTROY_ON_TOUCH = "destroy_on_touch"
@@ -72,6 +73,10 @@ internal class SettingsManager(context: Context) {
     var physicsEnabled: Boolean
         get() = prefs.getBoolean(KEY_PHYSICS, true)
         set(value) = prefs.edit { putBoolean(KEY_PHYSICS, value) }
+
+    var autoDisablePhysicsOnHeavyLoad: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_DISABLE_PHYSICS, true)
+        set(value) = prefs.edit { putBoolean(KEY_AUTO_DISABLE_PHYSICS, value) }
 
     var sizeBehavior: Float
         get() = BouncerPhysics.clampSizeBehavior(

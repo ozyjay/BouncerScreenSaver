@@ -82,6 +82,7 @@ class SettingsActivity : ComponentActivity() {
                 brightness = settings.brightness,
                 transparency = settings.transparency,
                 physicsEnabled = settings.physicsEnabled,
+                autoDisablePhysicsOnHeavyLoad = settings.autoDisablePhysicsOnHeavyLoad,
                 sizeBehavior = settings.sizeBehavior,
                 lifespanBase = settings.lifespanBase,
                 destroyOnTouch = settings.destroyOnTouch,
@@ -92,6 +93,7 @@ class SettingsActivity : ComponentActivity() {
             onBack = { finish() },
             onDone = { moveTaskToBack(true) },
             onPhysicsEnabledChange = { settings.physicsEnabled = it },
+            onAutoDisablePhysicsChange = { settings.autoDisablePhysicsOnHeavyLoad = it },
             onDestroyOnTouchChange = { settings.destroyOnTouch = it },
             onBallCountChangeFinished = { settings.ballCount = it.toInt() },
             onReRunCalibration = {
@@ -116,6 +118,7 @@ class SettingsActivity : ComponentActivity() {
         onBack: () -> Unit,
         onDone: () -> Unit,
         onPhysicsEnabledChange: (Boolean) -> Unit,
+        onAutoDisablePhysicsChange: (Boolean) -> Unit,
         onDestroyOnTouchChange: (Boolean) -> Unit,
         onBallCountChangeFinished: (Float) -> Unit,
         onReRunCalibration: () -> Unit,
@@ -136,6 +139,9 @@ class SettingsActivity : ComponentActivity() {
         var brightness by remember { mutableFloatStateOf(initialState.brightness) }
         var transparency by remember { mutableFloatStateOf(initialState.transparency) }
         var physicsEnabled by remember { mutableStateOf(initialState.physicsEnabled) }
+        var autoDisablePhysicsOnHeavyLoad by remember {
+            mutableStateOf(initialState.autoDisablePhysicsOnHeavyLoad)
+        }
         var sizeBehavior by remember { mutableFloatStateOf(initialState.sizeBehavior) }
         var lifespanBase by remember { mutableFloatStateOf(initialState.lifespanBase) }
         var destroyOnTouch by remember { mutableStateOf(initialState.destroyOnTouch) }
@@ -308,6 +314,21 @@ class SettingsActivity : ComponentActivity() {
                             onPhysicsEnabledChange(it)
                         },
                     )
+                    if (physicsEnabled) {
+                        SettingsSwitchRow(
+                            label = stringResource(R.string.pause_physics_under_heavy_load),
+                            checked = autoDisablePhysicsOnHeavyLoad,
+                            onCheckedChange = {
+                                autoDisablePhysicsOnHeavyLoad = it
+                                onAutoDisablePhysicsChange(it)
+                            },
+                        )
+                        Text(
+                            text = stringResource(R.string.pause_physics_under_heavy_load_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     SettingsSwitchRow(
                         label = stringResource(R.string.destroy_on_touch),
                         checked = destroyOnTouch,
@@ -447,6 +468,7 @@ class SettingsActivity : ComponentActivity() {
                         brightness = BallAppearance.DEFAULT_BRIGHTNESS,
                         transparency = BallAppearance.DEFAULT_TRANSPARENCY,
                         physicsEnabled = true,
+                        autoDisablePhysicsOnHeavyLoad = true,
                         sizeBehavior = -0.5f,
                         lifespanBase = 15f,
                         destroyOnTouch = false,
@@ -457,6 +479,7 @@ class SettingsActivity : ComponentActivity() {
                     onBack = {},
                     onDone = {},
                     onPhysicsEnabledChange = {},
+                    onAutoDisablePhysicsChange = {},
                     onDestroyOnTouchChange = {},
                     onBallCountChangeFinished = {},
                     onReRunCalibration = {},
@@ -480,6 +503,7 @@ class SettingsActivity : ComponentActivity() {
         val brightness: Float,
         val transparency: Float,
         val physicsEnabled: Boolean,
+        val autoDisablePhysicsOnHeavyLoad: Boolean,
         val sizeBehavior: Float,
         val lifespanBase: Float,
         val destroyOnTouch: Boolean,

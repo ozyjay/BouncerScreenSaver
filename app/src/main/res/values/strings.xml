@@ -30,6 +30,8 @@
     <string name="expand_section">Expand section</string>
     <string name="collapse_section">Collapse section</string>
     <string name="solid_body_physics">Solid Body Physics</string>
+    <string name="pause_physics_under_heavy_load">Pause collisions under heavy load</string>
+    <string name="pause_physics_under_heavy_load_description">Temporarily disables ball-to-ball collisions during severe frame drops, then restores them after performance stabilises.</string>
     <string name="destroy_on_touch">Destroy on Touch</string>
     <string name="ball_count_label">Ball Count: %1$d</string>
     <string name="ball_speed_label">Base Speed: %1$.1f</string>

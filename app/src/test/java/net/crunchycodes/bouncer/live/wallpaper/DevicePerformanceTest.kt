@@ -45,13 +45,14 @@ class DevicePerformanceTest {
         val reducedBallCount = controller.activeBallCount()
         assertTrue(reducedBallCount < 100)
 
-        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 8) {
-            controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
+        var lowestBallCount = reducedBallCount
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 12) {
+            val currentBallCount = controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
+            lowestBallCount = minOf(lowestBallCount, currentBallCount)
         }
-        val lowestBallCount = controller.activeBallCount()
         assertTrue(lowestBallCount <= reducedBallCount)
 
-        repeat(DevicePerformance.CALIBRATION_WINDOW_FRAMES * 12) {
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 24) {
             controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
         }
 
@@ -74,6 +75,73 @@ class DevicePerformanceTest {
 
         assertEquals(RenderQuality.Glow, controller.renderQuality())
         assertTrue(controller.activeBallCount() < 100)
+    }
+
+    @Test
+    fun runtimeControllerReactsWithinTwoShortWindows() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 2) {
+            controller.recordFrame((frameBudgetNanos * 1.25f).toLong(), frameBudgetNanos)
+        }
+
+        assertTrue(controller.activeBallCount() < 100)
+    }
+
+    @Test
+    fun isolatedLoadWindowDoesNotCauseDelayedOverThrottling() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            controller.recordFrame((frameBudgetNanos * 1.3f).toLong(), frameBudgetNanos)
+        }
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
+        }
+
+        assertEquals(100, controller.activeBallCount())
+    }
+
+    @Test
+    fun veryHeavyLoadTemporarilySuspendsSolidBodyPhysics() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+        controller.updateAutomaticPhysicsReduction(true)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+
+        assertFalse(controller.solidBodyPhysicsAllowed())
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 8) {
+            controller.recordFrame(frameBudgetNanos, frameBudgetNanos)
+        }
+
+        assertTrue(controller.solidBodyPhysicsAllowed())
+    }
+
+    @Test
+    fun automaticPhysicsReductionCanBeDisabledByUser() {
+        val frameBudgetNanos = DevicePerformance.frameBudgetNanos(60f)
+        val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
+
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 4) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+
+        assertTrue(controller.solidBodyPhysicsAllowed())
+
+        controller.updateAutomaticPhysicsReduction(true)
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+            controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
+        }
+        assertFalse(controller.solidBodyPhysicsAllowed())
+
+        controller.updateAutomaticPhysicsReduction(false)
+        assertTrue(controller.solidBodyPhysicsAllowed())
     }
 
     @Test

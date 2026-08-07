@@ -105,9 +105,11 @@ class SettingsManagerTest {
     @Test
     fun booleansPersist() {
         settingsManager.physicsEnabled = false
+        settingsManager.autoDisablePhysicsOnHeavyLoad = false
         settingsManager.destroyOnTouch = true
 
         assertFalse(settingsManager.physicsEnabled)
+        assertFalse(settingsManager.autoDisablePhysicsOnHeavyLoad)
         assertTrue(settingsManager.destroyOnTouch)
     }
 }

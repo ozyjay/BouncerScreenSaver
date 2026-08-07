@@ -34,6 +34,7 @@ internal object DevicePerformance {
     const val CALIBRATION_START_BALL_COUNT = 12
     const val CALIBRATION_WARMUP_FRAMES = 12
     const val CALIBRATION_WINDOW_FRAMES = 72
+    const val RUNTIME_WINDOW_FRAMES = 36
     const val MAX_BAD_WINDOW_STREAK = 2
     private const val GLOW_DEVICE_CAP_THRESHOLD = 64
     private const val STABLE_P95_MULTIPLIER = 1.1f
@@ -134,15 +135,27 @@ internal class RuntimeBallCountController(
     private var preferredRenderQuality = initialRenderQuality
     private var currentRenderQuality = initialRenderQuality
     private var automaticStyleChanges = false
+    private var automaticPhysicsReduction = false
+    private var solidBodyPhysicsSuspended = false
     private var frameCounter = 0
     private var badFrames = 0
     private var totalFrameDurationNanos = 0.0
     private var consecutiveGoodWindows = 0
+    private var consecutivePhysicsRecoveryWindows = 0
     private val performancePressureHistory = ArrayDeque<Float>(PERFORMANCE_HISTORY_WINDOWS)
 
     fun activeBallCount(): Int = activeBallCount
 
     fun renderQuality(): RenderQuality = currentRenderQuality
+
+    fun solidBodyPhysicsAllowed(): Boolean = !solidBodyPhysicsSuspended
+
+    fun updateAutomaticPhysicsReduction(enabled: Boolean) {
+        if (automaticPhysicsReduction == enabled) return
+        automaticPhysicsReduction = enabled
+        consecutivePhysicsRecoveryWindows = 0
+        if (!enabled) solidBodyPhysicsSuspended = false
+    }
 
     fun updateConfiguredBallCount(value: Int) {
         configuredBallCount = clamp(value)
@@ -168,6 +181,8 @@ internal class RuntimeBallCountController(
         badFrames = 0
         totalFrameDurationNanos = 0.0
         consecutiveGoodWindows = 0
+        consecutivePhysicsRecoveryWindows = 0
+        solidBodyPhysicsSuspended = false
         performancePressureHistory.clear()
     }
 
@@ -179,7 +194,7 @@ internal class RuntimeBallCountController(
             badFrames++
         }
 
-        if (frameCounter < DevicePerformance.CALIBRATION_WINDOW_FRAMES) {
+        if (frameCounter < DevicePerformance.RUNTIME_WINDOW_FRAMES) {
             return activeBallCount
         }
 
@@ -188,18 +203,31 @@ internal class RuntimeBallCountController(
         val averageOverrun = (averageFrameDuration / frameBudgetNanos.coerceAtLeast(1L) - 1.0)
             .toFloat()
             .coerceAtLeast(0f)
-        addPerformancePressure(max(badRatio, averageOverrun))
+        // A frame that only just misses the budget should not carry the same weight as a
+        // genuinely expensive frame. Average overrun captures severity; the scaled ratio
+        // still catches intermittent jank without turning a small timing miss into 100% load.
+        val latestPressure = max(badRatio * BAD_FRAME_RATIO_WEIGHT, averageOverrun)
+            .coerceIn(0f, 1f)
+        addPerformancePressure(latestPressure)
+        val rollingPressure = rollingPerformancePressure()
+        val responsivePressure = max(rollingPressure, latestPressure * RECENT_PRESSURE_FLOOR)
 
-        if (performancePressureHistory.size >= MIN_HISTORY_FOR_ADJUSTMENT) {
-            val rollingPressure = rollingPerformancePressure()
-            val reductionFraction = reductionFraction(rollingPressure)
+        if (
+            performancePressureHistory.size >= MIN_HISTORY_FOR_ADJUSTMENT ||
+            latestPressure >= IMMEDIATE_REACTION_THRESHOLD
+        ) {
+            val reductionFraction = if (latestPressure >= MILD_PRESSURE_THRESHOLD) {
+                reductionFraction(responsivePressure)
+            } else {
+                0f
+            }
             if (reductionFraction > 0f) {
                 activeBallCount = max(
                     adaptiveMinimumBallCount(),
                     activeBallCount - reductionStep(reductionFraction),
                 )
                 consecutiveGoodWindows = 0
-            } else if (rollingPressure <= STABLE_PRESSURE_THRESHOLD) {
+            } else if (latestPressure <= STABLE_PRESSURE_THRESHOLD) {
                 consecutiveGoodWindows++
                 if (consecutiveGoodWindows >= RECOVERY_WINDOW_COUNT && activeBallCount < configuredBallCount) {
                     activeBallCount = min(configuredBallCount, activeBallCount + recoveryStep())
@@ -209,10 +237,11 @@ internal class RuntimeBallCountController(
                 consecutiveGoodWindows = 0
             }
 
-            updateAutomaticRenderQuality(rollingPressure)
+            updateAutomaticRenderQuality(latestPressure, responsivePressure)
         } else {
-            consecutiveGoodWindows++
+            consecutiveGoodWindows = 0
         }
+        updateAutomaticPhysics(latestPressure, responsivePressure)
 
         frameCounter = 0
         badFrames = 0
@@ -220,12 +249,19 @@ internal class RuntimeBallCountController(
         return activeBallCount
     }
 
-    internal fun rollingPerformancePressure(): Float =
-        if (performancePressureHistory.isEmpty()) {
-            0f
-        } else {
-            performancePressureHistory.average().toFloat()
+    internal fun rollingPerformancePressure(): Float {
+        if (performancePressureHistory.isEmpty()) return 0f
+
+        var weight = 1f
+        var weightedPressure = 0f
+        var totalWeight = 0f
+        performancePressureHistory.forEach { pressure ->
+            weightedPressure += pressure * weight
+            totalWeight += weight
+            weight *= RECENCY_WEIGHT_MULTIPLIER
         }
+        return weightedPressure / totalWeight
+    }
 
     private fun addPerformancePressure(value: Float) {
         if (performancePressureHistory.size == PERFORMANCE_HISTORY_WINDOWS) {
@@ -246,10 +282,38 @@ internal class RuntimeBallCountController(
 
     private fun recoveryStep(): Int = max(1, (configuredBallCount * 0.05f).roundToInt())
 
+    private fun updateAutomaticPhysics(latestPressure: Float, responsivePressure: Float) {
+        if (!automaticPhysicsReduction) return
+
+        if (!solidBodyPhysicsSuspended) {
+            val sustainedHeavyLoad =
+                performancePressureHistory.size >= MIN_HISTORY_FOR_ADJUSTMENT &&
+                    responsivePressure >= PHYSICS_SUSPEND_PRESSURE_THRESHOLD
+            if (latestPressure >= PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD || sustainedHeavyLoad) {
+                solidBodyPhysicsSuspended = true
+                consecutivePhysicsRecoveryWindows = 0
+            }
+            return
+        }
+
+        if (latestPressure <= PHYSICS_RECOVERY_PRESSURE_THRESHOLD) {
+            consecutivePhysicsRecoveryWindows++
+            if (
+                consecutivePhysicsRecoveryWindows >= PHYSICS_RECOVERY_WINDOW_COUNT &&
+                responsivePressure <= PHYSICS_ROLLING_RECOVERY_THRESHOLD
+            ) {
+                solidBodyPhysicsSuspended = false
+                consecutivePhysicsRecoveryWindows = 0
+            }
+        } else {
+            consecutivePhysicsRecoveryWindows = 0
+        }
+    }
+
     private fun adaptiveMinimumBallCount(): Int =
         min(configuredBallCount, max(MIN_ADAPTIVE_BALL_COUNT, (configuredBallCount * 0.15f).roundToInt()))
 
-    private fun updateAutomaticRenderQuality(rollingPressure: Float) {
+    private fun updateAutomaticRenderQuality(latestPressure: Float, rollingPressure: Float) {
         if (
             !automaticStyleChanges ||
             preferredRenderQuality != RenderQuality.Glow ||
@@ -264,6 +328,7 @@ internal class RuntimeBallCountController(
         )
         if (
             currentRenderQuality == RenderQuality.Glow &&
+            latestPressure >= MODERATE_PRESSURE_THRESHOLD &&
             rollingPressure >= AUTO_FLAT_PRESSURE_THRESHOLD &&
             activeBallCount <= flatSwitchBallCount
         ) {
@@ -286,12 +351,21 @@ internal class RuntimeBallCountController(
     private companion object {
         const val MIN_ADAPTIVE_BALL_COUNT = 4
         const val PERFORMANCE_HISTORY_WINDOWS = 8
-        const val MIN_HISTORY_FOR_ADJUSTMENT = 3
-        const val RECOVERY_WINDOW_COUNT = 3
+        const val MIN_HISTORY_FOR_ADJUSTMENT = 2
+        const val RECOVERY_WINDOW_COUNT = 2
+        const val RECENCY_WEIGHT_MULTIPLIER = 1.35f
+        const val RECENT_PRESSURE_FLOOR = 0.8f
+        const val BAD_FRAME_RATIO_WEIGHT = 0.2f
+        const val IMMEDIATE_REACTION_THRESHOLD = 0.35f
         const val STABLE_PRESSURE_THRESHOLD = 0.015f
-        const val MILD_PRESSURE_THRESHOLD = 0.05f
-        const val MODERATE_PRESSURE_THRESHOLD = 0.12f
-        const val SEVERE_PRESSURE_THRESHOLD = 0.25f
+        const val MILD_PRESSURE_THRESHOLD = 0.04f
+        const val MODERATE_PRESSURE_THRESHOLD = 0.10f
+        const val SEVERE_PRESSURE_THRESHOLD = 0.22f
+        const val PHYSICS_IMMEDIATE_SUSPEND_THRESHOLD = 0.45f
+        const val PHYSICS_SUSPEND_PRESSURE_THRESHOLD = 0.24f
+        const val PHYSICS_RECOVERY_PRESSURE_THRESHOLD = 0.02f
+        const val PHYSICS_ROLLING_RECOVERY_THRESHOLD = 0.04f
+        const val PHYSICS_RECOVERY_WINDOW_COUNT = 4
         const val AUTO_FLAT_PRESSURE_THRESHOLD = 0.20f
         const val AUTO_GLOW_PRESSURE_THRESHOLD = 0.01f
         const val AUTO_FLAT_BALL_FRACTION = 0.5f

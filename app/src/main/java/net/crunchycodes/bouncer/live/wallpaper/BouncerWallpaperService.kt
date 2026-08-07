@@ -76,6 +76,9 @@ class BouncerWallpaperService : WallpaperService() {
         private var physicsEnabled = true
 
         @Volatile
+        private var autoDisablePhysicsOnHeavyLoad = true
+
+        @Volatile
         private var sizeBehavior = BouncerPhysics.DEFAULT_SIZE_BEHAVIOR
 
         @Volatile
@@ -299,6 +302,9 @@ class BouncerWallpaperService : WallpaperService() {
             if (changedKey == null || changedKey == SettingsManager.KEY_PHYSICS) {
                 physicsEnabled = settings.physicsEnabled
             }
+            if (changedKey == null || changedKey == SettingsManager.KEY_AUTO_DISABLE_PHYSICS) {
+                autoDisablePhysicsOnHeavyLoad = settings.autoDisablePhysicsOnHeavyLoad
+            }
             if (changedKey == null || changedKey == SettingsManager.KEY_SIZE_BEHAVIOR) {
                 sizeBehavior = settings.sizeBehavior
             }
@@ -372,6 +378,9 @@ class BouncerWallpaperService : WallpaperService() {
                             allowAutomaticStyleChanges = requestedBallStyle == BallStyle.AUTO,
                             force = requestedBallStyle != appliedBallStyle,
                         )
+                        runtimeBallController.updateAutomaticPhysicsReduction(
+                            autoDisablePhysicsOnHeavyLoad,
+                        )
                         appliedBallStyle = requestedBallStyle
                         refreshBallAppearanceIfNeeded()
 
@@ -386,6 +395,7 @@ class BouncerWallpaperService : WallpaperService() {
                                     height = canvas.height,
                                     deltaTime = deltaTime,
                                     desiredBallCount = runtimeBallController.activeBallCount(),
+                                    solidBodyPhysicsAllowed = runtimeBallController.solidBodyPhysicsAllowed(),
                                 )
                                 drawFrame(
                                     canvas = canvas,
@@ -479,7 +489,13 @@ class BouncerWallpaperService : WallpaperService() {
                 appliedAppearanceRevision = requestedRevision
             }
 
-            private fun updateState(width: Int, height: Int, deltaTime: Float, desiredBallCount: Int) {
+            private fun updateState(
+                width: Int,
+                height: Int,
+                deltaTime: Float,
+                desiredBallCount: Int,
+                solidBodyPhysicsAllowed: Boolean,
+            ) {
                 if (width <= 0 || height <= 0) return
 
                 simulationState.shiftTimestamps(pendingPausedDurationMillis.getAndSet(0L))
@@ -564,7 +580,11 @@ class BouncerWallpaperService : WallpaperService() {
                     simulationState.addBall(createRandomBall(width, height, currentTime))
                 }
 
-                if (physicsEnabled && simulationState.activeBallCount > 1) {
+                if (
+                    physicsEnabled &&
+                    solidBodyPhysicsAllowed &&
+                    simulationState.activeBallCount > 1
+                ) {
                     resolveCollisions(width, height)
                 }
             }
