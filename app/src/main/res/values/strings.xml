@@ -37,13 +37,13 @@
     <string name="performance_mode_adaptive_description">Automatically adjusts the effective ball count, Auto rendering style and collision processing while preserving your preferred settings.</string>
     <string name="performance_mode_fixed_description">Uses your selected settings without adaptive runtime adjustments. Calibration limits still apply.</string>
     <plurals name="current_adaptive_output">
-        <item quantity="one">Last active output: %1$d ball · %2$s · collisions %3$s</item>
-        <item quantity="other">Last active output: %1$d balls · %2$s · collisions %3$s</item>
+        <item quantity="one">Adaptive output: %1$d ball · %2$s · collisions %3$s</item>
+        <item quantity="other">Adaptive output: %1$d balls · %2$s · collisions %3$s</item>
     </plurals>
     <string name="collision_state_active">active</string>
     <string name="collision_state_paused">paused</string>
     <string name="collision_state_off">off</string>
-    <string name="current_performance_phase">Last adaptive state: %1$s</string>
+    <string name="current_performance_phase">Adaptive state: %1$s</string>
     <string name="performance_phase_fixed">Fixed</string>
     <string name="performance_phase_observing">Observing</string>
     <string name="performance_phase_reducing">Reducing balls</string>

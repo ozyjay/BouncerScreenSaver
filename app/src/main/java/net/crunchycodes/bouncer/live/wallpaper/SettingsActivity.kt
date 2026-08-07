@@ -60,24 +60,64 @@ import net.crunchycodes.bouncer.live.wallpaper.ui.theme.BouncerScreenSaverTheme
 import kotlin.math.roundToInt
 
 class SettingsActivity : ComponentActivity() {
+    private lateinit var settings: SettingsManager
+    private var runtimePerformanceState by mutableStateOf(
+        RuntimePerformanceUiState(
+            ballCount = BouncerPhysics.DEFAULT_BALL_COUNT,
+            renderQuality = RenderQuality.Glow,
+            physicsSuspended = false,
+            phase = RuntimePerformancePhase.OBSERVING,
+        ),
+    )
+    private val runtimePreferenceListener =
+        android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (SettingsManager.isRuntimePerformanceKey(key)) {
+                runOnUiThread(::refreshRuntimePerformanceState)
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val settings = SettingsManager(this)
+        settings = SettingsManager(this)
+        refreshRuntimePerformanceState()
+        settings.registerListener(runtimePreferenceListener)
         setContent {
             BouncerScreenSaverTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    SettingsScreen(settings)
+                    SettingsScreen(settings, runtimePerformanceState)
                 }
             }
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::settings.isInitialized) refreshRuntimePerformanceState()
+    }
+
+    override fun onDestroy() {
+        if (::settings.isInitialized) settings.unregisterListener(runtimePreferenceListener)
+        super.onDestroy()
+    }
+
+    private fun refreshRuntimePerformanceState() {
+        runtimePerformanceState = RuntimePerformanceUiState(
+            ballCount = settings.runtimeBallCount,
+            renderQuality = settings.runtimeRenderQuality,
+            physicsSuspended = settings.runtimePhysicsSuspended,
+            phase = settings.runtimePerformancePhase,
+        )
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    private fun SettingsScreen(settings: SettingsManager) {
+    private fun SettingsScreen(
+        settings: SettingsManager,
+        runtimeState: RuntimePerformanceUiState,
+    ) {
         SettingsScreenContent(
             initialState = SettingsScreenState(
                 ballCount = settings.ballCount.toFloat(),
@@ -85,10 +125,10 @@ class SettingsActivity : ComponentActivity() {
                 selectedPalette = settings.palette,
                 selectedBallStyle = settings.ballStyle,
                 performanceMode = settings.performanceMode,
-                runtimeBallCount = settings.runtimeBallCount,
-                runtimeRenderQuality = settings.runtimeRenderQuality,
-                runtimePhysicsSuspended = settings.runtimePhysicsSuspended,
-                runtimePerformancePhase = settings.runtimePerformancePhase,
+                runtimeBallCount = runtimeState.ballCount,
+                runtimeRenderQuality = runtimeState.renderQuality,
+                runtimePhysicsSuspended = runtimeState.physicsSuspended,
+                runtimePerformancePhase = runtimeState.phase,
                 brightness = settings.brightness,
                 transparency = settings.transparency,
                 physicsEnabled = settings.physicsEnabled,
@@ -632,6 +672,13 @@ class SettingsActivity : ComponentActivity() {
         val deviceMaxBallCount: Int,
         val deviceMaxBallSpeed: Float,
         val detectedRefreshRateHz: Int,
+    )
+
+    private data class RuntimePerformanceUiState(
+        val ballCount: Int,
+        val renderQuality: RenderQuality,
+        val physicsSuspended: Boolean,
+        val phase: RuntimePerformancePhase,
     )
 
     private enum class SettingsSection {

@@ -54,8 +54,16 @@ internal class SettingsManager(context: Context) {
             KEY_DEVICE_MAX_BALL_SPEED,
             KEY_RECOMMENDED_BALL_SPEED,
         )
+        private val RUNTIME_PERFORMANCE_KEYS = setOf(
+            KEY_RUNTIME_BALL_COUNT,
+            KEY_RUNTIME_RENDER_QUALITY,
+            KEY_RUNTIME_PHYSICS_SUSPENDED,
+            KEY_RUNTIME_PERFORMANCE_PHASE,
+        )
 
         fun isUserSettingKey(key: String?): Boolean = key in USER_SETTING_KEYS
+
+        fun isRuntimePerformanceKey(key: String?): Boolean = key in RUNTIME_PERFORMANCE_KEYS
     }
 
     // Clamp again at the storage boundary so invalid persisted values cannot destabilize

@@ -46,7 +46,25 @@ class SettingsActivityTest {
     fun performanceSectionShowsCurrentStateMachinePhase() {
         composeTestRule.onNodeWithText("Performance & calibration").performClick()
 
-        composeTestRule.onNodeWithText("Last adaptive state:", substring = true).assertExists()
+        composeTestRule.onNodeWithText("Adaptive state:", substring = true).assertExists()
+    }
+
+    @Test
+    fun performanceTelemetryUpdatesWhileSettingsIsVisible() {
+        composeTestRule.onNodeWithText("Performance & calibration").performClick()
+
+        composeTestRule.activityRule.scenario.onActivity { activity ->
+            SettingsManager(activity).persistRuntimePerformanceState(
+                ballCount = 7,
+                renderQuality = RenderQuality.Flat,
+                physicsSuspended = true,
+                phase = RuntimePerformancePhase.REDUCING,
+            )
+        }
+
+        composeTestRule.onNodeWithText("Adaptive output: 7 balls · Flat · collisions paused")
+            .assertExists()
+        composeTestRule.onNodeWithText("Adaptive state: Reducing balls").assertExists()
     }
 
     @Test
