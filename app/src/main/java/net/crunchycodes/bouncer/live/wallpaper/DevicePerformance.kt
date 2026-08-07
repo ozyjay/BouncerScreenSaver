@@ -648,8 +648,6 @@ internal class RuntimePerformanceController(
 
     fun snapshot(): RuntimePerformanceSnapshot = state.snapshot
 
-    fun currentState(): PerformanceThrottleState = state
-
     fun updateConfiguration(
         value: RuntimePerformanceConfig,
         settingsReset: Boolean = false,
