@@ -128,7 +128,14 @@ class BouncerPhysicsTest {
         val first = ball(x = 10f, y = 10f, dx = 3f, dy = 0f, radius = 10f)
         val second = ball(x = 15f, y = 10f, dx = -3f, dy = 0f, radius = 10f)
 
-        BouncerPhysics.separateAndResolveCollision(first, second, width = 30, height = 30, allowStopped = false)
+        BouncerPhysics.separateAndResolveCollision(
+            first,
+            second,
+            width = 30,
+            height = 30,
+            allowStopped = false,
+            maximumSpeed = 10f,
+        )
 
         assertTrue(first.x in first.radius..(30f - first.radius))
         assertTrue(second.x in second.radius..(30f - second.radius))
@@ -140,7 +147,14 @@ class BouncerPhysicsTest {
         val second = ball(x = 55f, y = 50f, dx = -4f, dy = -1f, radius = 12f)
 
         repeat(100) {
-            BouncerPhysics.separateAndResolveCollision(first, second, width = 200, height = 200, allowStopped = false)
+            BouncerPhysics.separateAndResolveCollision(
+                first,
+                second,
+                width = 200,
+                height = 200,
+                allowStopped = false,
+                maximumSpeed = 10f,
+            )
         }
 
         assertTrue(first.x.isFinite())
@@ -154,7 +168,14 @@ class BouncerPhysicsTest {
         val first = ball(x = 40f, y = 50f, dx = 0f, dy = 0f, radius = 12f)
         val second = ball(x = 45f, y = 50f, dx = 0f, dy = 0f, radius = 12f)
 
-        BouncerPhysics.separateAndResolveCollision(first, second, width = 200, height = 200, allowStopped = false)
+        BouncerPhysics.separateAndResolveCollision(
+            first,
+            second,
+            width = 200,
+            height = 200,
+            allowStopped = false,
+            maximumSpeed = 10f,
+        )
 
         assertTrue(BouncerPhysics.speedSquared(first.dx, first.dy) > 0f)
         assertTrue(BouncerPhysics.speedSquared(second.dx, second.dy) > 0f)
@@ -164,6 +185,62 @@ class BouncerPhysicsTest {
     fun speedChangeScaleTracksSettingRatio() {
         assertEquals(0.5f, BouncerPhysics.speedChangeScale(6f, 3f), 0f)
         assertEquals(2f, BouncerPhysics.speedChangeScale(3f, 6f), 0f)
+    }
+
+    @Test
+    fun speedBelowConfiguredEnvelopeIsUnchanged() {
+        val ball = ball(x = 50f, y = 50f, dx = 3f, dy = 4f, radius = 10f)
+
+        BouncerPhysics.limitBallSpeed(ball, maximumSpeed = 6f)
+
+        assertEquals(3f, ball.dx, 0f)
+        assertEquals(4f, ball.dy, 0f)
+    }
+
+    @Test
+    fun excessiveSpeedIsLimitedWithoutChangingDirection() {
+        val ball = ball(x = 50f, y = 50f, dx = 12f, dy = 16f, radius = 10f)
+
+        BouncerPhysics.limitBallSpeed(ball, maximumSpeed = 6f)
+
+        assertEquals(3.6f, ball.dx, 0.0001f)
+        assertEquals(4.8f, ball.dy, 0.0001f)
+        assertEquals(36f, BouncerPhysics.speedSquared(ball.dx, ball.dy), 0.0001f)
+    }
+
+    @Test
+    fun loweringBaseSpeedConstrainsPreviouslyAcceleratedBall() {
+        val ball = ball(x = 50f, y = 50f, dx = 24f, dy = 0f, radius = 10f)
+        val scale = BouncerPhysics.speedChangeScale(previousBaseSpeed = 8f, newBaseSpeed = 4f)
+        ball.dx *= scale
+        ball.dy *= scale
+
+        BouncerPhysics.limitBallSpeed(
+            ball,
+            maximumSpeed = BouncerPhysics.maximumSpeedForBase(4f),
+        )
+
+        assertEquals(6f, ball.dx, 0.0001f)
+        assertEquals(0f, ball.dy, 0f)
+    }
+
+    @Test
+    fun unequalMassCollisionCannotExceedConfiguredEnvelope() {
+        val first = ball(x = 40f, y = 50f, dx = 10f, dy = 0f, radius = 20f)
+        val second = ball(x = 60f, y = 50f, dx = 0f, dy = 0f, radius = 5f)
+        val maximumSpeed = BouncerPhysics.maximumSpeedForBase(5f)
+
+        BouncerPhysics.separateAndResolveCollision(
+            first,
+            second,
+            width = 200,
+            height = 200,
+            allowStopped = false,
+            maximumSpeed = maximumSpeed,
+        )
+
+        assertTrue(BouncerPhysics.speedSquared(first.dx, first.dy) <= maximumSpeed * maximumSpeed)
+        assertTrue(BouncerPhysics.speedSquared(second.dx, second.dy) <= maximumSpeed * maximumSpeed)
     }
 
     @Test

@@ -17,6 +17,7 @@ internal object BouncerPhysics {
     const val DEFAULT_LIFESPAN_SECONDS = 15f
     const val MIN_BALL_SPEED = 1f
     const val MAX_BALL_SPEED = 10f
+    const val MAX_SPEED_MULTIPLIER = 1.5f
     const val MIN_SIZE_BEHAVIOR = -2f
     const val MAX_SIZE_BEHAVIOR = 2f
     const val MIN_LIFESPAN_SECONDS = 2f
@@ -45,6 +46,30 @@ internal object BouncerPhysics {
             DEFAULT_BALL_SPEED
         }
         return updated / previous
+    }
+
+    fun maximumSpeedForBase(baseSpeed: Float): Float {
+        val safeBaseSpeed = if (baseSpeed.isFinite() && baseSpeed > 0f) {
+            baseSpeed
+        } else {
+            DEFAULT_BALL_SPEED
+        }
+        return safeBaseSpeed * MAX_SPEED_MULTIPLIER
+    }
+
+    fun limitBallSpeed(ball: BallState, maximumSpeed: Float) {
+        val safeMaximumSpeed = if (maximumSpeed.isFinite() && maximumSpeed > 0f) {
+            maximumSpeed
+        } else {
+            maximumSpeedForBase(DEFAULT_BALL_SPEED)
+        }
+        val currentSpeedSquared = speedSquared(ball.dx, ball.dy)
+        val maximumSpeedSquared = safeMaximumSpeed * safeMaximumSpeed
+        if (!currentSpeedSquared.isFinite() || currentSpeedSquared <= maximumSpeedSquared) return
+
+        val scale = safeMaximumSpeed / sqrt(currentSpeedSquared)
+        ball.dx *= scale
+        ball.dy *= scale
     }
 
     fun radiusForSurface(
@@ -153,6 +178,7 @@ internal object BouncerPhysics {
         width: Int,
         height: Int,
         allowStopped: Boolean,
+        maximumSpeed: Float,
     ) {
         val deltaX = second.x - first.x
         val deltaY = second.y - first.y
@@ -185,6 +211,8 @@ internal object BouncerPhysics {
         if (!areApproaching(first.dx, first.dy, second.dx, second.dy, normalX, normalY)) {
             ensureFiniteBall(first, width, height, allowStopped)
             ensureFiniteBall(second, width, height, allowStopped)
+            limitBallSpeed(first, maximumSpeed)
+            limitBallSpeed(second, maximumSpeed)
             return
         }
 
@@ -202,6 +230,8 @@ internal object BouncerPhysics {
 
         ensureFiniteBall(first, width, height, allowStopped)
         ensureFiniteBall(second, width, height, allowStopped)
+        limitBallSpeed(first, maximumSpeed)
+        limitBallSpeed(second, maximumSpeed)
     }
 
     fun speedSquared(dx: Float, dy: Float): Float = dx * dx + dy * dy

@@ -532,9 +532,11 @@ class BouncerWallpaperService : WallpaperService() {
                 if (requestedBaseSpeed == simulationBaseSpeed) return
 
                 val scale = BouncerPhysics.speedChangeScale(simulationBaseSpeed, requestedBaseSpeed)
+                val maximumSpeed = BouncerPhysics.maximumSpeedForBase(requestedBaseSpeed)
                 for (ball in simulationState.balls) {
                     ball.dx *= scale
                     ball.dy *= scale
+                    BouncerPhysics.limitBallSpeed(ball, maximumSpeed)
                 }
                 simulationBaseSpeed = requestedBaseSpeed
             }
@@ -554,6 +556,7 @@ class BouncerWallpaperService : WallpaperService() {
                 val balls = simulationState.balls
                 val excessBallCount = simulationState.activeBallCount - desiredBallCount
                 val deltaScale = deltaTime * 60f
+                val maximumSpeed = BouncerPhysics.maximumSpeedForBase(baseSpeed)
                 val radiusLimit = BouncerPhysics.maxRadiusForPopulation(
                     width = width,
                     height = height,
@@ -568,6 +571,7 @@ class BouncerWallpaperService : WallpaperService() {
                 while (iterator.hasNext()) {
                     val ball = iterator.next()
                     BouncerPhysics.ensureFiniteBall(ball, width, height, allowStopped = false)
+                    BouncerPhysics.limitBallSpeed(ball, maximumSpeed)
 
                     val isTouched = touch != null && BouncerPhysics.isTouchWithinDestroyRadius(
                         ballX = ball.x,
@@ -635,7 +639,7 @@ class BouncerWallpaperService : WallpaperService() {
                     solidBodyPhysicsAllowed &&
                     simulationState.activeBallCount > 1
                 ) {
-                    resolveCollisions(width, height)
+                    resolveCollisions(width, height, maximumSpeed)
                 }
             }
 
@@ -654,7 +658,7 @@ class BouncerWallpaperService : WallpaperService() {
                 }
             }
 
-            private fun resolveCollisions(width: Int, height: Int) {
+            private fun resolveCollisions(width: Int, height: Int, maximumSpeed: Float) {
                 // Partition the surface into bins so each ball only checks nearby neighbors
                 // instead of naively iterating the full population.
                 val balls = simulationState.balls
@@ -714,6 +718,7 @@ class BouncerWallpaperService : WallpaperService() {
                                         width = width,
                                         height = height,
                                         allowStopped = false,
+                                        maximumSpeed = maximumSpeed,
                                     )
                                 }
                                 otherIndex = collisionNext[otherIndex]
