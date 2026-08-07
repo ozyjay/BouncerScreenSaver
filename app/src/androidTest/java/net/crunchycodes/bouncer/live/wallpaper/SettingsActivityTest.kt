@@ -26,7 +26,7 @@ class SettingsActivityTest {
 
     @Test
     fun appearanceControlsAreDisplayed() {
-        composeTestRule.onNodeWithText("Ball Style").assertExists()
+        composeTestRule.onNodeWithText("Ball style").assertExists()
         composeTestRule.onNodeWithText("Auto").assertExists()
         composeTestRule.onNodeWithText("Glow").assertExists()
         composeTestRule.onNodeWithText("Flat").assertExists()
@@ -38,15 +38,15 @@ class SettingsActivityTest {
     fun collapsedSectionCanBeExpanded() {
         composeTestRule.onNodeWithText("Motion & behaviour").performClick()
 
-        composeTestRule.onNodeWithText("Base Speed:", substring = true).assertExists()
-        composeTestRule.onNodeWithText("Avg Lifespan:", substring = true).assertExists()
+        composeTestRule.onNodeWithText("Base speed:", substring = true).assertExists()
+        composeTestRule.onNodeWithText("Average lifespan:", substring = true).assertExists()
     }
 
     @Test
     fun performanceSectionShowsCurrentStateMachinePhase() {
         composeTestRule.onNodeWithText("Performance & calibration").performClick()
 
-        composeTestRule.onNodeWithText("Adaptive state:", substring = true).assertExists()
+        composeTestRule.onNodeWithText("Last adaptive state:", substring = true).assertExists()
     }
 
     @Test

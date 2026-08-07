@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -299,7 +300,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
-                                contentDescription = stringResource(R.string.open_settings),
+                                contentDescription = null,
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
@@ -414,8 +415,9 @@ class MainActivity : ComponentActivity() {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = stringResource(
-                        R.string.calibration_status,
+                    text = pluralStringResource(
+                        R.plurals.calibration_status,
+                        controller.currentBallCount,
                         controller.currentBallCount,
                         controller.refreshRateHz.roundToInt(),
                     ),

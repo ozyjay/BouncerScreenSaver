@@ -43,12 +43,12 @@ class MainActivityTest {
     @Test
     fun dashboardDisplay() {
         composeTestRule.onNodeWithText("BOUNCER").assertExists()
-        composeTestRule.onNodeWithText("Customize").assertExists()
+        composeTestRule.onNodeWithText("Customise").assertExists()
     }
 
     @Test
     fun customizeButtonClickNavigatesToSettings() {
-        composeTestRule.onNodeWithText("Customize").performClick()
+        composeTestRule.onNodeWithText("Customise").performClick()
 
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("Bouncer Settings").assertExists()

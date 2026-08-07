@@ -1,21 +1,21 @@
 # Bouncer
 
-Bouncer is an Android live wallpaper with glowing balls, configurable colors, touch interaction, and optional collision physics.
+Bouncer is an Android live wallpaper with glowing balls, configurable colours, touch interaction, and optional collision physics.
 
 ## Features
 
 - Dedicated wallpaper render thread with explicit visibility, surface, and destruction state handling.
 - Glowing ball rendering using a cached bitmap per render thread.
 - Optional solid-body collisions with grid-based broad-phase checks.
-- Configurable ball count, base speed, palette, size behavior, lifespan, and touch destruction.
+- Configurable ball count, base speed, palette, size behaviour, lifespan, and touch interaction.
 - Compose-based dashboard and settings screens.
 
 ## Performance Notes
 
-Performance depends on device hardware, display resolution, refresh rate, selected ball count, collision physics, and size behavior.
+Performance depends on device hardware, display resolution, refresh rate, selected ball count, collision physics, and size behaviour. The wallpaper targets 60 fps and adapts its performance budget when Android presents the surface at a sustained slower cadence.
 
 - Low and medium ball counts are generally the safest options for broad testing.
-- High counts, especially 250 to 1,000 balls, are intentionally available but demanding.
+- High counts, especially 250 to 300 balls, are intentionally available but demanding.
 - Collision physics increases CPU work as population density rises.
 - The launcher dashboard uses a lightweight background simulation and pauses when the activity is not visible.
 
@@ -69,6 +69,6 @@ If a device or emulator is available:
 3. Lock and unlock the device repeatedly.
 4. Enter and leave wallpaper preview.
 5. Open and close wallpaper settings.
-6. Test 10, 50, 250, and 1,000 balls with physics both on and off.
+6. Test 10, 50, 250, and 300 balls with physics both on and off.
 7. Confirm the wallpaper always resumes rendering when visible and stops rendering when hidden.
 8. Watch Logcat for `BouncerWallpaper` lifecycle, stop-timeout, and restart messages.

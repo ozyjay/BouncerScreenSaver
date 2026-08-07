@@ -167,11 +167,15 @@ class BouncerWallpaperService : WallpaperService() {
                 // This is a hint to SurfaceFlinger, not a frame limiter. The render loop below
                 // still paces itself, while Android can select a compatible display mode.
                 holder.surface.setFrameRate(
-                    TARGET_RENDER_RATE_HZ,
+                    DevicePerformance.WALLPAPER_TARGET_REFRESH_RATE_HZ,
                     Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
                 )
             } catch (error: IllegalArgumentException) {
-                Log.w(TAG, "Unable to request ${TARGET_RENDER_RATE_HZ}Hz wallpaper surface", error)
+                Log.w(
+                    TAG,
+                    "Unable to request ${DevicePerformance.WALLPAPER_TARGET_REFRESH_RATE_HZ} Hz wallpaper surface",
+                    error,
+                )
             }
         }
 
@@ -391,8 +395,12 @@ class BouncerWallpaperService : WallpaperService() {
 
             override fun run() {
                 var lastFrameNanos = SystemClock.elapsedRealtimeNanos()
-                val targetFrameIntervalNanos = DevicePerformance.frameBudgetNanos(TARGET_RENDER_RATE_HZ)
-                val effectiveFrameBudgetTracker = EffectiveFrameBudgetTracker(TARGET_RENDER_RATE_HZ)
+                val targetFrameIntervalNanos = DevicePerformance.frameBudgetNanos(
+                    DevicePerformance.WALLPAPER_TARGET_REFRESH_RATE_HZ,
+                )
+                val effectiveFrameBudgetTracker = EffectiveFrameBudgetTracker(
+                    DevicePerformance.WALLPAPER_TARGET_REFRESH_RATE_HZ,
+                )
                 val deviceMaxBallCount = settings.effectiveMaxBallCount()
                 simulationState.prepareCapacity(deviceMaxBallCount)
                 ensureCollisionCapacity(deviceMaxBallCount * 4, deviceMaxBallCount)
@@ -950,7 +958,6 @@ class BouncerWallpaperService : WallpaperService() {
         const val RENDER_THREAD_STOP_TIMEOUT_MS = 500L
         const val NANOS_PER_MILLISECOND = 1_000_000L
         const val NANOS_PER_SECOND = 1_000_000_000.0
-        const val TARGET_RENDER_RATE_HZ = 60f
         const val MAX_DELTA_SECONDS = 0.05f
         const val RETIRE_DURATION_MILLIS = 220L
         const val MIN_RETIRE_SCALE = 0.35f

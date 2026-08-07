@@ -27,6 +27,7 @@ internal enum class RenderQuality {
 }
 
 internal object DevicePerformance {
+    const val WALLPAPER_TARGET_REFRESH_RATE_HZ = 60f
     const val FALLBACK_REFRESH_RATE_HZ = 60f
     const val MIN_SUPPORTED_REFRESH_RATE_HZ = 30f
     const val MAX_SUPPORTED_REFRESH_RATE_HZ = 144f

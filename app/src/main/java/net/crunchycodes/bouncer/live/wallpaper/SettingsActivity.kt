@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.clickable
@@ -48,6 +49,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -247,7 +252,9 @@ class SettingsActivity : ComponentActivity() {
                         onValueChange = { brightness = it },
                         onValueChangeFinished = { onBrightnessChangeFinished(brightness) },
                         valueRange = BallAppearance.MIN_BRIGHTNESS..BallAppearance.MAX_BRIGHTNESS,
-                        modifier = sliderModifier,
+                        modifier = sliderModifier.semantics {
+                            contentDescription = getString(R.string.brightness_accessibility_label)
+                        },
                     )
                     Text(
                         text = stringResource(
@@ -260,7 +267,9 @@ class SettingsActivity : ComponentActivity() {
                         onValueChange = { transparency = it },
                         onValueChangeFinished = { onTransparencyChangeFinished(transparency) },
                         valueRange = BallAppearance.MIN_TRANSPARENCY..BallAppearance.MAX_TRANSPARENCY,
-                        modifier = sliderModifier,
+                        modifier = sliderModifier.semantics {
+                            contentDescription = getString(R.string.transparency_accessibility_label)
+                        },
                     )
                 }
 
@@ -276,7 +285,9 @@ class SettingsActivity : ComponentActivity() {
                         onValueChange = { ballSpeed = it },
                         onValueChangeFinished = { onBallSpeedChangeFinished(ballSpeed) },
                         valueRange = BouncerPhysics.MIN_BALL_SPEED..initialState.deviceMaxBallSpeed,
-                        modifier = sliderModifier,
+                        modifier = sliderModifier.semantics {
+                            contentDescription = getString(R.string.ball_speed_accessibility_label)
+                        },
                     )
                     Text(
                         text = stringResource(R.string.ball_speed_cap_note, initialState.deviceMaxBallSpeed),
@@ -294,7 +305,9 @@ class SettingsActivity : ComponentActivity() {
                         onValueChange = { sizeBehavior = it },
                         onValueChangeFinished = { onSizeBehaviorChangeFinished(sizeBehavior) },
                         valueRange = BouncerPhysics.MIN_SIZE_BEHAVIOR..BouncerPhysics.MAX_SIZE_BEHAVIOR,
-                        modifier = sliderModifier,
+                        modifier = sliderModifier.semantics {
+                            contentDescription = getString(R.string.size_behavior_accessibility_label)
+                        },
                     )
                     Text(text = stringResource(R.string.lifespan_label, lifespanBase.toInt()))
                     Slider(
@@ -302,7 +315,9 @@ class SettingsActivity : ComponentActivity() {
                         onValueChange = { lifespanBase = it },
                         onValueChangeFinished = { onLifespanBaseChangeFinished(lifespanBase) },
                         valueRange = BouncerPhysics.MIN_LIFESPAN_SECONDS..BouncerPhysics.MAX_LIFESPAN_SECONDS,
-                        modifier = sliderModifier,
+                        modifier = sliderModifier.semantics {
+                            contentDescription = getString(R.string.lifespan_accessibility_label)
+                        },
                     )
                 }
 
@@ -391,8 +406,9 @@ class SettingsActivity : ComponentActivity() {
                             },
                         )
                         Text(
-                            text = stringResource(
-                                R.string.current_adaptive_output,
+                            text = pluralStringResource(
+                                R.plurals.current_adaptive_output,
+                                initialState.runtimeBallCount,
                                 initialState.runtimeBallCount,
                                 runtimeStyle,
                                 collisionState,
@@ -422,12 +438,21 @@ class SettingsActivity : ComponentActivity() {
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = stringResource(
-                            R.string.calibrated_device_cap,
+                        text = pluralStringResource(
+                            R.plurals.calibrated_device_cap,
+                            initialState.deviceMaxBallCount,
                             initialState.deviceMaxBallCount,
                             initialState.detectedRefreshRateHz,
                         ),
                         style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.wallpaper_target_frame_rate,
+                            DevicePerformance.WALLPAPER_TARGET_REFRESH_RATE_HZ.roundToInt(),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(text = stringResource(R.string.ball_count_label, ballCount.toInt()))
@@ -436,7 +461,9 @@ class SettingsActivity : ComponentActivity() {
                         onValueChange = { ballCount = it },
                         onValueChangeFinished = { onBallCountChangeFinished(ballCount) },
                         valueRange = BouncerPhysics.MIN_BALL_COUNT.toFloat()..initialState.deviceMaxBallCount.toFloat(),
-                        modifier = sliderModifier,
+                        modifier = sliderModifier.semantics {
+                            contentDescription = getString(R.string.ball_count_accessibility_label)
+                        },
                     )
                     Text(
                         text = stringResource(R.string.ball_count_calibration_note),
@@ -444,7 +471,11 @@ class SettingsActivity : ComponentActivity() {
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = stringResource(R.string.high_ball_count_note, initialState.deviceMaxBallCount),
+                        text = pluralStringResource(
+                            R.plurals.high_ball_count_note,
+                            initialState.deviceMaxBallCount,
+                            initialState.deviceMaxBallCount,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -516,12 +547,18 @@ class SettingsActivity : ComponentActivity() {
         onCheckedChange: (Boolean) -> Unit,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = checked,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange,
+                ),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(text = label, modifier = Modifier.weight(1f))
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
+            Switch(checked = checked, onCheckedChange = null)
         }
     }
 
