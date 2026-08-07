@@ -33,6 +33,14 @@ internal object LauncherSimulation {
         BallStyle.FLAT -> false
     }
 
+    fun rescaleSpeeds(balls: List<LauncherBall>, previousBaseSpeed: Float, newBaseSpeed: Float) {
+        val scale = BouncerPhysics.speedChangeScale(previousBaseSpeed, newBaseSpeed)
+        balls.forEach { ball ->
+            ball.dx *= scale
+            ball.dy *= scale
+        }
+    }
+
     fun update(balls: List<LauncherBall>, width: Float, height: Float, deltaSeconds: Float) {
         if (width <= 0f || height <= 0f) return
         for (ball in balls) {

@@ -155,6 +155,8 @@ internal class RuntimeBallCountController(
 
     fun onSettingsAdjusted() {
         resetPerformanceHistory()
+        activeBallCount = configuredBallCount
+        currentRenderQuality = preferredRenderQuality
         solidBodyPhysicsSuspended = false
         physicsResumeGraceWindows = PHYSICS_SETTINGS_GRACE_WINDOWS
     }

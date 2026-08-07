@@ -54,4 +54,21 @@ class LauncherSimulationTest {
         assertEquals(100f, ball.dx, 0f)
         assertEquals(50f, ball.dy, 0f)
     }
+
+    @Test
+    fun speedSettingRescalesExistingBalls() {
+        val ball = LauncherBall(
+            x = 50f,
+            y = 50f,
+            dx = 120f,
+            dy = -60f,
+            radius = 5f,
+            color = Color.Red,
+        )
+
+        LauncherSimulation.rescaleSpeeds(listOf(ball), previousBaseSpeed = 6f, newBaseSpeed = 2f)
+
+        assertEquals(40f, ball.dx, 0.0001f)
+        assertEquals(-20f, ball.dy, 0.0001f)
+    }
 }

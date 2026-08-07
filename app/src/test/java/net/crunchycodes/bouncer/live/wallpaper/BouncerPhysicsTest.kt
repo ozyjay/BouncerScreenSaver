@@ -161,6 +161,12 @@ class BouncerPhysicsTest {
     }
 
     @Test
+    fun speedChangeScaleTracksSettingRatio() {
+        assertEquals(0.5f, BouncerPhysics.speedChangeScale(6f, 3f), 0f)
+        assertEquals(2f, BouncerPhysics.speedChangeScale(3f, 6f), 0f)
+    }
+
+    @Test
     fun invalidValuesRecoverToFiniteDefaults() {
         val ball = ball(
             x = Float.NaN,

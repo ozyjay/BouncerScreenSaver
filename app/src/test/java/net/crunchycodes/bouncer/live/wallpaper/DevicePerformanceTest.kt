@@ -168,16 +168,18 @@ class DevicePerformanceTest {
         val controller = RuntimeBallCountController(100, 100, RenderQuality.Glow)
         controller.updateAutomaticPhysicsReduction(true)
 
-        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES) {
+        repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 2) {
             controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)
         }
         assertFalse(controller.solidBodyPhysicsAllowed())
         assertTrue(controller.rollingPerformancePressure() > 0f)
+        assertTrue(controller.activeBallCount() < 100)
 
         controller.onSettingsAdjusted()
 
         assertTrue(controller.solidBodyPhysicsAllowed())
         assertEquals(0f, controller.rollingPerformancePressure(), 0f)
+        assertEquals(100, controller.activeBallCount())
 
         repeat(DevicePerformance.RUNTIME_WINDOW_FRAMES * 4) {
             controller.recordFrame((frameBudgetNanos * 1.6f).toLong(), frameBudgetNanos)

@@ -33,6 +33,20 @@ internal object BouncerPhysics {
     fun clampLifespanSeconds(value: Float): Float =
         value.coerceIn(MIN_LIFESPAN_SECONDS, MAX_LIFESPAN_SECONDS)
 
+    fun speedChangeScale(previousBaseSpeed: Float, newBaseSpeed: Float): Float {
+        val previous = if (previousBaseSpeed.isFinite() && previousBaseSpeed > 0f) {
+            previousBaseSpeed
+        } else {
+            DEFAULT_BALL_SPEED
+        }
+        val updated = if (newBaseSpeed.isFinite() && newBaseSpeed > 0f) {
+            newBaseSpeed
+        } else {
+            DEFAULT_BALL_SPEED
+        }
+        return updated / previous
+    }
+
     fun radiusForSurface(
         initialRadius: Float,
         sizeBehavior: Float,

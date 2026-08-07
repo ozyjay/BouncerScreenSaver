@@ -100,6 +100,7 @@ class BouncerWallpaperService : WallpaperService() {
 
         private var runtimeBallController: RuntimeBallCountController? = null
         private var runtimeControllerDeviceCap = 0
+        private var simulationBaseSpeed = Float.NaN
         @Volatile
         private var runtimeControllerSettingsRevision = -1L
 
@@ -392,6 +393,7 @@ class BouncerWallpaperService : WallpaperService() {
                         val requestedSettingsRevision = performanceSettingsRevision.get()
                         if (requestedSettingsRevision != runtimeControllerSettingsRevision) {
                             runtimeBallController.onSettingsAdjusted()
+                            simulationState.clear()
                             runtimeControllerSettingsRevision = requestedSettingsRevision
                         }
                         runtimeBallController.updateAdaptivePerformance(adaptivePerformance)
@@ -405,6 +407,7 @@ class BouncerWallpaperService : WallpaperService() {
                             adaptivePerformance && physicsEnabled && autoDisablePhysicsOnHeavyLoad,
                         )
                         appliedBallStyle = requestedBallStyle
+                        applyUpdatedBallSpeed()
                         refreshBallAppearanceIfNeeded()
 
                         var canvas: Canvas? = null
@@ -511,6 +514,22 @@ class BouncerWallpaperService : WallpaperService() {
                     ball.colorFilter = null
                 }
                 appliedAppearanceRevision = requestedRevision
+            }
+
+            private fun applyUpdatedBallSpeed() {
+                val requestedBaseSpeed = baseSpeed
+                if (!simulationBaseSpeed.isFinite()) {
+                    simulationBaseSpeed = requestedBaseSpeed
+                    return
+                }
+                if (requestedBaseSpeed == simulationBaseSpeed) return
+
+                val scale = BouncerPhysics.speedChangeScale(simulationBaseSpeed, requestedBaseSpeed)
+                for (ball in simulationState.balls) {
+                    ball.dx *= scale
+                    ball.dy *= scale
+                }
+                simulationBaseSpeed = requestedBaseSpeed
             }
 
             private fun updateState(

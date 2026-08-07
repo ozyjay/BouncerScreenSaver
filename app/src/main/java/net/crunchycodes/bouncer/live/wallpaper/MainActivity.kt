@@ -465,6 +465,7 @@ class MainActivity : ComponentActivity() {
         }
         var canvasSize by remember { mutableStateOf(Size.Zero) }
         var frameTick by remember { mutableIntStateOf(0) }
+        var appliedBallSpeed by remember { mutableFloatStateOf(simulationSettings.ballSpeed) }
 
         val targetBallCount = (overrideBallCount ?: simulationSettings.ballCount)
             .coerceIn(BouncerPhysics.MIN_BALL_COUNT, maxBallCount)
@@ -522,6 +523,15 @@ class MainActivity : ComponentActivity() {
             balls.forEach { ball ->
                 ball.color = dashboardBallColor(simulationSettings)
             }
+        }
+
+        LaunchedEffect(simulationSettings.ballSpeed) {
+            LauncherSimulation.rescaleSpeeds(
+                balls = balls,
+                previousBaseSpeed = appliedBallSpeed,
+                newBaseSpeed = simulationSettings.ballSpeed,
+            )
+            appliedBallSpeed = simulationSettings.ballSpeed
         }
 
         LaunchedEffect(isRunning, canvasSize, simulationSettings, targetBallCount, frameIntervalNanos) {
