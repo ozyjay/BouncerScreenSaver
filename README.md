@@ -62,6 +62,20 @@ If a device or emulator is available:
 .\gradlew.bat connectedDebugAndroidTest
 ```
 
+### Wireless ADB on Windows
+
+Use `scripts/Connect-AndroidWirelessDebugging.ps1` to pair and connect a phone. On the phone, enable **Developer options > Wireless debugging**, then run:
+
+```powershell
+.\scripts\Connect-AndroidWirelessDebugging.ps1
+```
+
+The script prompts separately for the temporary **pairing** port and the current **IP address & Port** connection port. They are different. On later sessions, skip the one-time pairing step:
+
+```powershell
+.\scripts\Connect-AndroidWirelessDebugging.ps1 -DeviceIp 192.168.0.105 -SkipPairing
+```
+
 ### Lifecycle stress checks
 
 1. Apply Bouncer as the live wallpaper.
