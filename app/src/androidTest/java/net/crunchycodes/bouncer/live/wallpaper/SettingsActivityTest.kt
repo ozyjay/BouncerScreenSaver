@@ -1,11 +1,13 @@
 package net.crunchycodes.bouncer.live.wallpaper
 
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.Lifecycle
 import androidx.test.platform.app.InstrumentationRegistry
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -68,11 +70,23 @@ class SettingsActivityTest {
     }
 
     @Test
-    fun doneKeepsSettingsActivityInTask() {
+    fun previewExplainsWhenChangesAreSaved() {
+        composeTestRule.onNodeWithText("Preview").assertExists()
+        composeTestRule.onNodeWithText("Changes are saved when you preview. Use Back to discard them.")
+            .assertExists()
+    }
+
+    @Test
+    fun backDiscardsUnpreviewedChanges() {
         val activity = composeTestRule.activity
+        val settings = SettingsManager(activity)
+        val paletteBefore = settings.palette
+        val replacementPalette = if (paletteBefore == ColorPalette.NEON) "Ocean" else "Neon"
 
-        composeTestRule.onNodeWithText("Done").performClick()
+        composeTestRule.onNodeWithText(replacementPalette).performClick()
+        composeTestRule.onNodeWithContentDescription("Back").performClick()
 
-        assertFalse(activity.isFinishing)
+        assertTrue(activity.isFinishing)
+        assertEquals(paletteBefore, SettingsManager(activity).palette)
     }
 }

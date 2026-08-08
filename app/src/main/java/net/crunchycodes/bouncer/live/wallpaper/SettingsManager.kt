@@ -174,6 +174,27 @@ internal class SettingsManager(context: Context) {
         get() = prefs.getBoolean(KEY_DESTROY_ON_TOUCH, false)
         set(value) = prefs.edit { putBoolean(KEY_DESTROY_ON_TOUCH, value) }
 
+    /**
+     * Commits an edited configuration only when the user explicitly chooses to preview it.
+     * Until this point, SettingsActivity keeps controls in its in-memory draft.
+     */
+    fun saveConfiguration(configuration: WallpaperConfiguration) {
+        prefs.edit {
+            putInt(KEY_BALL_COUNT, clampBallCountForDevice(configuration.ballCount))
+            putFloat(KEY_BALL_SPEED, clampBallSpeedForDevice(configuration.ballSpeed))
+            putString(KEY_PALETTE, configuration.palette.id)
+            putFloat(KEY_BRIGHTNESS, BallAppearance.clampBrightness(configuration.brightness))
+            putFloat(KEY_TRANSPARENCY, BallAppearance.clampTransparency(configuration.transparency))
+            putString(KEY_BALL_STYLE, configuration.ballStyle.id)
+            putString(KEY_PERFORMANCE_MODE, configuration.performanceMode.id)
+            putBoolean(KEY_PHYSICS, configuration.physicsEnabled)
+            putBoolean(KEY_AUTO_DISABLE_PHYSICS, configuration.autoDisablePhysicsOnHeavyLoad)
+            putFloat(KEY_SIZE_BEHAVIOR, BouncerPhysics.clampSizeBehavior(configuration.sizeBehavior))
+            putFloat(KEY_LIFESPAN, BouncerPhysics.clampLifespanSeconds(configuration.lifespanBase))
+            putBoolean(KEY_DESTROY_ON_TOUCH, configuration.destroyOnTouch)
+        }
+    }
+
     var hasCompletedCalibration: Boolean
         get() = prefs.getBoolean(KEY_HAS_COMPLETED_CALIBRATION, false)
         set(value) = prefs.edit { putBoolean(KEY_HAS_COMPLETED_CALIBRATION, value) }
@@ -290,3 +311,18 @@ internal class SettingsManager(context: Context) {
     private fun clampBallSpeedForDevice(value: Float): Float =
         value.coerceIn(BouncerPhysics.MIN_BALL_SPEED, deviceMaxBallSpeed)
 }
+
+internal data class WallpaperConfiguration(
+    val ballCount: Int,
+    val ballSpeed: Float,
+    val palette: ColorPalette,
+    val brightness: Float,
+    val transparency: Float,
+    val ballStyle: BallStyle,
+    val performanceMode: PerformanceMode,
+    val physicsEnabled: Boolean,
+    val autoDisablePhysicsOnHeavyLoad: Boolean,
+    val sizeBehavior: Float,
+    val lifespanBase: Float,
+    val destroyOnTouch: Boolean,
+)

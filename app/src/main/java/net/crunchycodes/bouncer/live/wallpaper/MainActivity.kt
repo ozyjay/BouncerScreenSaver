@@ -256,35 +256,33 @@ class MainActivity : ComponentActivity() {
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        if (showApplyWallpaper) {
-                            Button(
-                                onClick = {
-                                    val intent =
-                                        Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
-                                            putExtra(
-                                                WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                                                ComponentName(context, BouncerWallpaperService::class.java),
-                                            )
-                                        }
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(64.dp)
-                                    .clip(RoundedCornerShape(16.dp)),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                ),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.set_wallpaper),
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 2.sp,
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = {
+                                val intent =
+                                    Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
+                                        putExtra(
+                                            WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                                            ComponentName(context, BouncerWallpaperService::class.java),
+                                        )
+                                    }
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp)
+                                .clip(RoundedCornerShape(16.dp)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.set_wallpaper),
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.sp,
+                            )
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         OutlinedButton(
                             onClick = {
@@ -325,20 +323,6 @@ class MainActivity : ComponentActivity() {
                                     fontWeight = FontWeight.Bold,
                                 )
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        TextButton(
-                            onClick = { finishAffinity() },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.exit_app),
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontWeight = FontWeight.Medium,
-                                letterSpacing = 1.sp,
-                            )
                         }
                     }
 

@@ -1,6 +1,8 @@
 package net.crunchycodes.bouncer.live.wallpaper
 
 import android.content.Intent
+import android.app.WallpaperManager
+import android.content.ComponentName
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -141,24 +143,22 @@ class SettingsActivity : ComponentActivity() {
                 detectedRefreshRateHz = settings.calibrationRefreshRateHz.roundToInt(),
             ),
             onBack = { finish() },
-            onDone = { moveTaskToBack(true) },
-            onPhysicsEnabledChange = { settings.physicsEnabled = it },
-            onAutoDisablePhysicsChange = { settings.autoDisablePhysicsOnHeavyLoad = it },
-            onDestroyOnTouchChange = { settings.destroyOnTouch = it },
-            onBallCountChangeFinished = { settings.ballCount = it.toInt() },
+            onPreview = { configuration ->
+                settings.saveConfiguration(configuration)
+                startActivity(
+                    Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
+                        putExtra(
+                            WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                            ComponentName(this@SettingsActivity, BouncerWallpaperService::class.java),
+                        )
+                    },
+                )
+            },
             onReRunCalibration = {
                 settings.resetCalibration()
                 startActivity(Intent(this@SettingsActivity, MainActivity::class.java))
                 finish()
             },
-            onBallSpeedChangeFinished = { settings.ballSpeed = it },
-            onSizeBehaviorChangeFinished = { settings.sizeBehavior = it },
-            onLifespanBaseChangeFinished = { settings.lifespanBase = it },
-            onPaletteSelected = { settings.palette = it },
-            onBallStyleSelected = { settings.ballStyle = it },
-            onPerformanceModeSelected = { settings.performanceMode = it },
-            onBrightnessChangeFinished = { settings.brightness = it },
-            onTransparencyChangeFinished = { settings.transparency = it },
         )
     }
 
@@ -167,23 +167,11 @@ class SettingsActivity : ComponentActivity() {
     private fun SettingsScreenContent(
         initialState: SettingsScreenState,
         onBack: () -> Unit,
-        onDone: () -> Unit,
-        onPhysicsEnabledChange: (Boolean) -> Unit,
-        onAutoDisablePhysicsChange: (Boolean) -> Unit,
-        onDestroyOnTouchChange: (Boolean) -> Unit,
-        onBallCountChangeFinished: (Float) -> Unit,
+        onPreview: (WallpaperConfiguration) -> Unit,
         onReRunCalibration: () -> Unit,
-        onBallSpeedChangeFinished: (Float) -> Unit,
-        onSizeBehaviorChangeFinished: (Float) -> Unit,
-        onLifespanBaseChangeFinished: (Float) -> Unit,
-        onPaletteSelected: (ColorPalette) -> Unit,
-        onBallStyleSelected: (BallStyle) -> Unit,
-        onPerformanceModeSelected: (PerformanceMode) -> Unit,
-        onBrightnessChangeFinished: (Float) -> Unit,
-        onTransparencyChangeFinished: (Float) -> Unit,
     ) {
-        // Keep slider state local while dragging so the UI stays responsive; persist only
-        // when the gesture completes to avoid writing preferences on every frame.
+        // The complete configuration is a draft until Preview is tapped. This lets Back
+        // retain its Android meaning: leave this destination without saving changes.
         var ballCount by remember { mutableFloatStateOf(initialState.ballCount) }
         var ballSpeed by remember { mutableFloatStateOf(initialState.ballSpeed) }
         var selectedPalette by remember { mutableStateOf(initialState.selectedPalette) }
@@ -219,8 +207,27 @@ class SettingsActivity : ComponentActivity() {
                         }
                     },
                     actions = {
-                        TextButton(onClick = onDone) {
-                            Text(text = stringResource(R.string.done))
+                        TextButton(
+                            onClick = {
+                                onPreview(
+                                    WallpaperConfiguration(
+                                        ballCount = ballCount.toInt(),
+                                        ballSpeed = ballSpeed,
+                                        palette = selectedPalette,
+                                        brightness = brightness,
+                                        transparency = transparency,
+                                        ballStyle = selectedBallStyle,
+                                        performanceMode = performanceMode,
+                                        physicsEnabled = physicsEnabled,
+                                        autoDisablePhysicsOnHeavyLoad = autoDisablePhysicsOnHeavyLoad,
+                                        sizeBehavior = sizeBehavior,
+                                        lifespanBase = lifespanBase,
+                                        destroyOnTouch = destroyOnTouch,
+                                    ),
+                                )
+                            },
+                        ) {
+                            Text(text = stringResource(R.string.preview))
                         }
                     },
                 )
@@ -234,6 +241,11 @@ class SettingsActivity : ComponentActivity() {
                     .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                Text(
+                    text = stringResource(R.string.settings_draft_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 SettingsSectionCard(
                     title = stringResource(R.string.settings_section_appearance),
                     summary = stringResource(R.string.settings_section_appearance_summary),
@@ -252,7 +264,6 @@ class SettingsActivity : ComponentActivity() {
                                 selected = selectedPalette == palette,
                                 onClick = {
                                     selectedPalette = palette
-                                    onPaletteSelected(palette)
                                 },
                                 label = { Text(stringResource(palette.labelRes)) },
                             )
@@ -269,7 +280,6 @@ class SettingsActivity : ComponentActivity() {
                                 selected = selectedBallStyle == style,
                                 onClick = {
                                     selectedBallStyle = style
-                                    onBallStyleSelected(style)
                                 },
                                 label = { Text(stringResource(style.labelRes)) },
                             )
@@ -290,7 +300,6 @@ class SettingsActivity : ComponentActivity() {
                     Slider(
                         value = brightness,
                         onValueChange = { brightness = it },
-                        onValueChangeFinished = { onBrightnessChangeFinished(brightness) },
                         valueRange = BallAppearance.MIN_BRIGHTNESS..BallAppearance.MAX_BRIGHTNESS,
                         modifier = sliderModifier.semantics {
                             contentDescription = getString(R.string.brightness_accessibility_label)
@@ -305,7 +314,6 @@ class SettingsActivity : ComponentActivity() {
                     Slider(
                         value = transparency,
                         onValueChange = { transparency = it },
-                        onValueChangeFinished = { onTransparencyChangeFinished(transparency) },
                         valueRange = BallAppearance.MIN_TRANSPARENCY..BallAppearance.MAX_TRANSPARENCY,
                         modifier = sliderModifier.semantics {
                             contentDescription = getString(R.string.transparency_accessibility_label)
@@ -323,7 +331,6 @@ class SettingsActivity : ComponentActivity() {
                     Slider(
                         value = ballSpeed,
                         onValueChange = { ballSpeed = it },
-                        onValueChangeFinished = { onBallSpeedChangeFinished(ballSpeed) },
                         valueRange = BouncerPhysics.MIN_BALL_SPEED..initialState.deviceMaxBallSpeed,
                         modifier = sliderModifier.semantics {
                             contentDescription = getString(R.string.ball_speed_accessibility_label)
@@ -343,7 +350,6 @@ class SettingsActivity : ComponentActivity() {
                     Slider(
                         value = sizeBehavior,
                         onValueChange = { sizeBehavior = it },
-                        onValueChangeFinished = { onSizeBehaviorChangeFinished(sizeBehavior) },
                         valueRange = BouncerPhysics.MIN_SIZE_BEHAVIOR..BouncerPhysics.MAX_SIZE_BEHAVIOR,
                         modifier = sliderModifier.semantics {
                             contentDescription = getString(R.string.size_behavior_accessibility_label)
@@ -353,7 +359,6 @@ class SettingsActivity : ComponentActivity() {
                     Slider(
                         value = lifespanBase,
                         onValueChange = { lifespanBase = it },
-                        onValueChangeFinished = { onLifespanBaseChangeFinished(lifespanBase) },
                         valueRange = BouncerPhysics.MIN_LIFESPAN_SECONDS..BouncerPhysics.MAX_LIFESPAN_SECONDS,
                         modifier = sliderModifier.semantics {
                             contentDescription = getString(R.string.lifespan_accessibility_label)
@@ -374,7 +379,6 @@ class SettingsActivity : ComponentActivity() {
                         checked = physicsEnabled,
                         onCheckedChange = {
                             physicsEnabled = it
-                            onPhysicsEnabledChange(it)
                         },
                     )
                     if (physicsEnabled) {
@@ -383,7 +387,6 @@ class SettingsActivity : ComponentActivity() {
                             checked = autoDisablePhysicsOnHeavyLoad,
                             onCheckedChange = {
                                 autoDisablePhysicsOnHeavyLoad = it
-                                onAutoDisablePhysicsChange(it)
                             },
                         )
                         Text(
@@ -397,7 +400,6 @@ class SettingsActivity : ComponentActivity() {
                         checked = destroyOnTouch,
                         onCheckedChange = {
                             destroyOnTouch = it
-                            onDestroyOnTouchChange(it)
                         },
                     )
                 }
@@ -420,7 +422,6 @@ class SettingsActivity : ComponentActivity() {
                                 selected = performanceMode == mode,
                                 onClick = {
                                     performanceMode = mode
-                                    onPerformanceModeSelected(mode)
                                 },
                                 label = { Text(stringResource(mode.labelRes)) },
                             )
@@ -499,7 +500,6 @@ class SettingsActivity : ComponentActivity() {
                     Slider(
                         value = ballCount,
                         onValueChange = { ballCount = it },
-                        onValueChangeFinished = { onBallCountChangeFinished(ballCount) },
                         valueRange = BouncerPhysics.MIN_BALL_COUNT.toFloat()..initialState.deviceMaxBallCount.toFloat(),
                         modifier = sliderModifier.semantics {
                             contentDescription = getString(R.string.ball_count_accessibility_label)
@@ -633,20 +633,8 @@ class SettingsActivity : ComponentActivity() {
                         detectedRefreshRateHz = 60,
                     ),
                     onBack = {},
-                    onDone = {},
-                    onPhysicsEnabledChange = {},
-                    onAutoDisablePhysicsChange = {},
-                    onDestroyOnTouchChange = {},
-                    onBallCountChangeFinished = {},
+                    onPreview = {},
                     onReRunCalibration = {},
-                    onBallSpeedChangeFinished = {},
-                    onSizeBehaviorChangeFinished = {},
-                    onLifespanBaseChangeFinished = {},
-                    onPaletteSelected = {},
-                    onBallStyleSelected = {},
-                    onPerformanceModeSelected = {},
-                    onBrightnessChangeFinished = {},
-                    onTransparencyChangeFinished = {},
                 )
             }
         }

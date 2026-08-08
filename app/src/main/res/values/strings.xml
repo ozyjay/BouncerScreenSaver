@@ -6,7 +6,7 @@
     <string name="wallpaper_active_body">Bouncer is currently set as your live wallpaper.</string>
     <string name="wallpaper_inactive_title">Wallpaper Not Active</string>
     <string name="wallpaper_inactive_body">Bouncer is not currently active. Apply it to use the live wallpaper.</string>
-    <string name="set_wallpaper">Apply Wallpaper</string>
+    <string name="set_wallpaper">Preview &amp; apply wallpaper</string>
     <string name="remove_wallpaper">Remove Bouncer Wallpaper</string>
     <string name="remove_wallpaper_title">Remove Bouncer wallpaper?</string>
     <string name="remove_wallpaper_message">Your device’s default wallpaper will replace Bouncer.</string>
@@ -17,7 +17,8 @@
     <string name="customize">Customise</string>
     <string name="settings_title">Bouncer Settings</string>
     <string name="back">Back</string>
-    <string name="done">Done</string>
+    <string name="preview">Preview</string>
+    <string name="settings_draft_note">Changes are saved when you preview. Use Back to discard them.</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_section_appearance_summary">Palette, rendering style and visibility</string>
     <string name="settings_section_motion">Motion &amp; behaviour</string>
@@ -99,7 +100,6 @@
     <string name="wallpaper_target_frame_rate">Wallpaper target: %1$d fps</string>
     <string name="ball_count_calibration_note">Ball count is limited by your device calibration and can be re-tested at any time.</string>
     <string name="rerun_calibration">Re-run device calibration</string>
-    <string name="exit_app">Close dashboard</string>
     <string name="palette_random">Random</string>
     <string name="palette_neon">Neon</string>
     <string name="palette_ocean">Ocean</string>
